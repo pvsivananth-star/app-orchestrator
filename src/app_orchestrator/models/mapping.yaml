@@ -1,5 +1,134 @@
-fast-reasoning: deepseek
-structured-json: groq
-dependency-reasoning: huggingface
-commit-flex: openrouter
-general-fallback: gemini
+providers:
+  gemini:
+    name: gemini
+    model: gemini-3.6-flash
+    env_vars: [GEMINI_API_KEY]
+    timeout: 30
+    max_retries: 5
+    retry_delay: 1.0
+  deepseek:
+    name: deepseek
+    model: deepseek-chat
+    env_vars: [DEEPSEEK_API_KEY]
+    timeout: 30
+    max_retries: 5
+    retry_delay: 1.0
+  groq:
+    name: groq
+    model: mixtral-8x7b-32768
+    env_vars: [GROQ_API_KEY]
+    timeout: 30
+    max_retries: 5
+    retry_delay: 1.0
+  openrouter:
+    name: openrouter
+    model: openai/gpt-3.5-turbo
+    env_vars: [OPENROUTER_API_KEY]
+    timeout: 30
+    max_retries: 5
+    retry_delay: 1.0
+  huggingface:
+    name: huggingface
+    model: meta-llama/Llama-2-70b-chat-hf
+    env_vars: [HUGGINGFACE_API_KEY]
+    timeout: 60
+    max_retries: 5
+    retry_delay: 2.0
+  microsoft_groq:
+    name: microsoft_groq
+    model: mixtral-8x7b-32768
+    env_vars: [GROQ_API_KEY]
+    timeout: 30
+    max_retries: 5
+    retry_delay: 1.0
+
+agents:
+  # Heavy reasoning – DeepSeek first
+  interaction:
+    - deepseek
+    - groq
+    - openrouter
+    - microsoft_groq
+    - FAIL
+  
+  requirement_enhancer:
+    - deepseek
+    - groq
+    - openrouter
+    - microsoft_groq
+    - FAIL
+  
+  business_analyst:
+    - deepseek
+    - groq
+    - openrouter
+    - microsoft_groq
+    - FAIL
+  
+  # Code generation – DeepSeek first
+  implementation:
+    - deepseek
+    - groq
+    - openrouter
+    - microsoft_groq
+    - FAIL
+  
+  # Fast checks – Groq first
+  verification:
+    - groq
+    - deepseek
+    - openrouter
+    - microsoft_groq
+    - FAIL
+  
+  security:
+    - groq
+    - deepseek
+    - openrouter
+    - microsoft_groq
+    - FAIL
+  
+  lint:
+    - groq
+    - deepseek
+    - openrouter
+    - microsoft_groq
+    - FAIL
+  
+  test:
+    - groq
+    - deepseek
+    - openrouter
+    - microsoft_groq
+    - FAIL
+  
+  # Repository analysis – Gemini (used once per run)
+  repo_analyst:
+    - gemini
+    - deepseek
+    - groq
+    - microsoft_groq
+    - FAIL
+  
+  # Documentation – Gemini (used once per run)
+  doc:
+    - gemini
+    - deepseek
+    - groq
+    - microsoft_groq
+    - FAIL
+  
+  # Commit – OpenRouter first (specialized)
+  commit:
+    - openrouter
+    - deepseek
+    - groq
+    - microsoft_groq
+    - FAIL
+  
+  dependency:
+    - huggingface
+    - deepseek
+    - groq
+    - microsoft_groq
+    - FAIL
