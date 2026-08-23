@@ -1,0 +1,19 @@
+[project]
+name = "app-orchestrator"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Paramasivam Veerasivanantham", email = "pvsivananth@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "agent-framework>=1.15.0",
+]
+
+[project.scripts]
+app-orchestrator = "app_orchestrator:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
