@@ -1,0 +1,5 @@
+fast-reasoning: deepseek
+structured-json: groq
+dependency-reasoning: huggingface
+commit-flex: openrouter
+general-fallback: gemini
