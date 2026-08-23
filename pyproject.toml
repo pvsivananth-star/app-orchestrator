@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "agent-framework>=1.15.0",
+    "google-genai>=2.19.0",
 ]
 
 [project.scripts]
