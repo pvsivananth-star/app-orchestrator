@@ -34,7 +34,7 @@ class ProviderResponse:
     usage: Optional[Dict[str, int]] = None
     duration_ms: float = 0.0
     timestamp: datetime = None
-
+    
     def __post_init__(self):
         if self.timestamp is None:
             self.timestamp = datetime.utcnow()
@@ -46,7 +46,7 @@ class ProviderError(Exception):
     provider: str
     retryable: bool = True
     details: Optional[Dict[str, Any]] = None
-
+    
     def __str__(self):
         return f"[{self.provider}] {self.error_type.value}: {self.message}"
 
@@ -57,16 +57,35 @@ class BaseProvider(ABC):
         self.timeout = config.get("timeout", 30)
         self.max_retries = config.get("max_retries", 5)
         self.retry_delay = config.get("retry_delay", 1.0)
+        
+        # Fallback models list (order of preference)
+        self.fallback_models = config.get("fallback_models", [])
+        # Rate limiting interval (seconds between requests)
+        self.rate_limit_interval = config.get("rate_limit_interval", 0.0)
+        
+        self._last_request_time = 0.0
         self._validate_config()
-
+    
     @abstractmethod
     def _validate_config(self):
         pass
-
+    
     @abstractmethod
-    def _generate(self, prompt: str, context: Dict[str, Any]) -> ProviderResponse:
+    def _call_model(self, prompt: str, context: Dict[str, Any], model: str) -> ProviderResponse:
+        """Generate using a specific model. Must be implemented by subclass."""
         pass
-
+    
+    def _rate_limit(self):
+        """Ensure at least rate_limit_interval seconds between requests."""
+        if self.rate_limit_interval <= 0:
+            return
+        now = time.time()
+        elapsed = now - self._last_request_time
+        if elapsed < self.rate_limit_interval:
+            sleep_time = self.rate_limit_interval - elapsed
+            time.sleep(sleep_time)
+        self._last_request_time = time.time()
+    
     def _get_cache_key(self, prompt: str, context: Dict[str, Any]) -> str:
         data = {
             "provider": self.provider_name,
@@ -75,7 +94,7 @@ class BaseProvider(ABC):
         }
         key_str = json.dumps(data, sort_keys=True)
         return hashlib.md5(key_str.encode()).hexdigest()
-
+    
     def _read_cache(self, cache_key: str) -> Optional[ProviderResponse]:
         if DISABLE_CACHE:
             return None
@@ -97,7 +116,7 @@ class BaseProvider(ABC):
         except Exception as e:
             logger.warning(f"Cache read failed: {e}")
             return None
-
+    
     def _write_cache(self, cache_key: str, response: ProviderResponse):
         if DISABLE_CACHE:
             return
@@ -110,49 +129,55 @@ class BaseProvider(ABC):
             logger.debug(f"Cached response for {self.provider_name}")
         except Exception as e:
             logger.warning(f"Cache write failed: {e}")
-
+    
     def generate(self, prompt: str, context: Dict[str, Any]) -> ProviderResponse:
+        # Check cache
         cache_key = self._get_cache_key(prompt, context)
         cached = self._read_cache(cache_key)
         if cached:
             return cached
-
+        
+        # Determine which models to try
+        models_to_try = self.fallback_models if self.fallback_models else [self.config.get("model")]
+        if not models_to_try or not models_to_try[0]:
+            models_to_try = [self.config.get("model", "default")]
+        
         last_error = None
-        for attempt in range(self.max_retries):
+        for model in models_to_try:
             try:
-                start_time = time.time()
-                response = self._generate(prompt, context)
-                response.duration_ms = (time.time() - start_time) * 1000
-                response.provider = self.provider_name
-                logger.info(f"Provider {self.provider_name} success")
+                self._rate_limit()
+                response = self._call_model(prompt, context, model)
+                response.provider = f"{self.provider_name}:{model}"
+                response.model = model
+                logger.info(f"Provider {self.provider_name} success with model {model}")
                 self._write_cache(cache_key, response)
                 return response
             except ProviderError as e:
                 last_error = e
                 if not e.retryable:
-                    raise
-                wait_time = self.retry_delay * (2 ** attempt)
-                logger.warning(f"Provider {self.provider_name} attempt {attempt+1} failed, retry in {wait_time:.1f}s")
-                time.sleep(wait_time)
+                    # Non-retryable error – stop trying other models
+                    break
+                # Log and try next model
+                logger.warning(f"Model {model} failed: {e}. Trying next model.")
                 continue
             except Exception as e:
-                # Unexpected non-ProviderError – raise as unknown
+                # Unexpected – raise as unknown and stop
                 raise ProviderError(
                     error_type=ProviderErrorType.UNKNOWN,
-                    message=f"Unexpected error: {str(e)}",
+                    message=f"Unexpected error on {model}: {str(e)}",
                     provider=self.provider_name,
                     retryable=False
                 )
-        # All retries exhausted – raise the last error (preserve its type)
+        # All models exhausted
         if last_error:
             raise last_error
         raise ProviderError(
             error_type=ProviderErrorType.UNKNOWN,
-            message="All retries exhausted with no specific error",
+            message="All models failed with no specific error",
             provider=self.provider_name,
             retryable=False
         )
-
+    
     def _parse_error_response(self, status_code: int, response_data: Dict) -> ProviderError:
         error_type = ProviderErrorType.UNKNOWN
         message = "Unknown error"
