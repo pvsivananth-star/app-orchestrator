@@ -45,24 +45,64 @@ providers:
     max_retries: 5
     retry_delay: 2.0
 
-  :
-    name: 
-    model: mixtral-8x7b-32768
-    env_vars: [GROQ_API_KEY]
-    timeout: 30
-    max_retries: 5
-    retry_delay: 1.0
-
 agents:
-  interaction: [deepseek, groq, openrouter, FAIL]
-  requirement_enhancer: [deepseek, groq, openrouter, FAIL]
-  business_analyst: [deepseek, groq, openrouter, FAIL]
-  repo_analyst: [gemini, deepseek, groq, FAIL]
-  dependency: [huggingface, deepseek, groq, FAIL]
-  implementation: [deepseek, groq, openrouter, FAIL]
-  verification: [groq, deepseek, openrouter, FAIL]
-  security: [deepseek, groq, openrouter, FAIL]
-  lint: [groq, deepseek, openrouter, FAIL]
-  test: [deepseek, groq, openrouter, FAIL]
-  doc: [gemini, deepseek, groq, FAIL]
-  commit: [openrouter, deepseek, groq, FAIL]
+  interaction:
+    - deepseek
+    - groq
+    - openrouter
+    - FAIL
+  requirement_enhancer:
+    - deepseek
+    - groq
+    - openrouter
+    - FAIL
+  business_analyst:
+    - deepseek
+    - groq
+    - openrouter
+    - FAIL
+  repo_analyst:
+    - gemini
+    - deepseek
+    - groq
+    - FAIL
+  dependency:
+    - huggingface
+    - deepseek
+    - groq
+    - FAIL
+  implementation:
+    - deepseek
+    - groq
+    - openrouter
+    - FAIL
+  verification:
+    - groq
+    - deepseek
+    - openrouter
+    - FAIL
+  security:
+    - deepseek
+    - groq
+    - openrouter
+    - FAIL
+  lint:
+    - groq
+    - deepseek
+    - openrouter
+    - FAIL
+  test:
+    - deepseek
+    - groq
+    - openrouter
+    - FAIL
+  doc:
+    - gemini
+    - deepseek
+    - groq
+    - FAIL
+  commit:
+    - openrouter
+    - deepseek
+    - groq
+    - FAIL

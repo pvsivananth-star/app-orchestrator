@@ -62,9 +62,10 @@ class Agent(ABC):
         raise RuntimeError(error_msg)
     
     def _build_context(self) -> Dict[str, Any]:
+        # IMPORTANT: Convert state to dict to avoid JSON serialization errors
         context = {
             "workspace": self.workspace,
-            "state": self.state,
+            "state": self.state.to_dict(),  # <-- FIXED: convert to dict
             "artifacts": {},
             "loop_a_iteration": self.state.loop_a_iteration,
             "loop_b_iteration": self.state.loop_b_iteration,
@@ -76,7 +77,9 @@ class Agent(ABC):
         return context
     
     def _read_artifact(self, filename: str) -> Optional[str]:
+        """Helper to read an artifact from workspace."""
         return self.workspace.read(filename)
     
     def _write_artifact(self, filename: str, content: str):
+        """Helper to write an artifact to workspace."""
         self.workspace.write(filename, content)

@@ -74,10 +74,7 @@ class BaseProvider(ABC):
         pass
     
     def _call_model(self, prompt: str, context: Dict[str, Any], model: str) -> ProviderResponse:
-        """
-        Generate using a specific model. Default implementation ignores model and calls _generate.
-        Subclasses can override to support multiple models.
-        """
+        """Generate using a specific model. Default implementation ignores model and calls _generate."""
         return self._generate(prompt, context)
     
     def _rate_limit(self):
@@ -91,12 +88,26 @@ class BaseProvider(ABC):
         self._last_request_time = time.time()
     
     def _get_cache_key(self, prompt: str, context: Dict[str, Any]) -> str:
+        """Generate a cache key from prompt and context."""
+        # Only include safe, serializable data
+        safe_context = {}
+        for key, value in context.items():
+            # Skip non-serializable objects
+            if key in ["workspace", "state"]:
+                continue
+            try:
+                json.dumps(value)
+                safe_context[key] = value
+            except (TypeError, ValueError):
+                # Skip non-serializable values
+                continue
+        
         data = {
             "provider": self.provider_name,
             "prompt": prompt,
-            "context": {k: v for k, v in context.items() if k != "temperature"}
+            "context": safe_context
         }
-        key_str = json.dumps(data, sort_keys=True)
+        key_str = json.dumps(data, sort_keys=True, default=str)
         return hashlib.md5(key_str.encode()).hexdigest()
     
     def _read_cache(self, cache_key: str) -> Optional[ProviderResponse]:
