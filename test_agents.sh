@@ -26,15 +26,37 @@ echo ""
 
 if [ -f ../test-ox2/.ox2/requirements.md ]; then
     echo "✅ requirements.md found!"
-    echo ""
-    echo "Contents of requirements.md (first 500 chars):"
-    echo "----------------------------------------"
-    head -c 500 ../test-ox2/.ox2/requirements.md
-    echo ""
-    echo "... (truncated)"
 else
     echo "❌ requirements.md not found"
 fi
+
+if [ -f ../test-ox2/.ox2/clarified_requirements.md ]; then
+    echo "✅ clarified_requirements.md found!"
+else
+    echo "❌ clarified_requirements.md not found"
+fi
+
+if [ -f ../test-ox2/.ox2/compile.log ]; then
+    echo "✅ compile.log found!"
+    echo ""
+    echo "Compile log:"
+    echo "----------------------------------------"
+    cat ../test-ox2/.ox2/compile.log
+else
+    echo "❌ compile.log not found"
+fi
+
+if [ -f ../test-ox2/.ox2/implementation_log.md ]; then
+    echo "✅ implementation_log.md found!"
+else
+    echo "❌ implementation_log.md not found"
+fi
+
+echo ""
+echo "=========================================="
+echo "Generated Files in Repository:"
+echo "=========================================="
+find ../test-ox2 -maxdepth 1 -type f -not -name ".*" -not -name "LICENSE" -not -name "README.md" -not -name ".gitignore" 2>/dev/null | head -20
 
 echo ""
 echo "=========================================="

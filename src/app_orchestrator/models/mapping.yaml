@@ -23,7 +23,7 @@ providers:
 
   groq:
     name: groq
-    model: mixtral-8x7b-32768
+    model: groq/compound #llama-3.3-70b-versatile  # or llama-3.1-8b-instant mixtral-8x7b-32768
     env_vars: [GROQ_API_KEY]
     timeout: 30
     max_retries: 5

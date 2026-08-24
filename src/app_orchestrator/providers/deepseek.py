@@ -1,8 +1,10 @@
-
 import os
 from typing import Dict, Any
 import requests
+import logging
 from .base import BaseProvider, ProviderResponse, ProviderError, ProviderErrorType
+
+logger = logging.getLogger(__name__)
 
 class DeepSeekProvider(BaseProvider):
     def __init__(self, config: Dict[str, Any]):
@@ -13,11 +15,11 @@ class DeepSeekProvider(BaseProvider):
         self.model_name = config.get("model", "deepseek-chat")
         self.api_url = "https://api.deepseek.com/v1/chat/completions"
         self.headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-    
+
     def _validate_config(self):
         if "name" not in self.config:
             raise ValueError("Missing config key: name")
-    
+
     def _generate(self, prompt: str, context: Dict[str, Any]) -> ProviderResponse:
         try:
             messages = []
@@ -41,7 +43,11 @@ class DeepSeekProvider(BaseProvider):
                     model=self.model_name,
                     usage=data.get("usage", {})
                 )
-            raise self._parse_error_response(response.status_code, response.json() if response.text else {})
+            else:
+                # Log detailed error
+                error_data = response.json() if response.text else {}
+                logger.error(f"DeepSeek error {response.status_code}: {error_data}")
+                raise self._parse_error_response(response.status_code, error_data)
         except requests.Timeout:
             raise ProviderError(ProviderErrorType.TIMEOUT, "Timeout", self.provider_name, True)
         except requests.ConnectionError:
@@ -50,8 +56,3 @@ class DeepSeekProvider(BaseProvider):
             raise
         except Exception as e:
             raise ProviderError(ProviderErrorType.UNKNOWN, str(e), self.provider_name, True)
-
-
-    def _call_model(self, prompt: str, context: Dict[str, Any], model: str) -> ProviderResponse:
-        """Delegate to _generate (ignores model)."""
-        return self._generate(prompt, context)
