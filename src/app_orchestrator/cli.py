@@ -6,6 +6,7 @@ from pathlib import Path
 from .orchestrator import Orchestrator
 
 def run():
+    print("DEBUG: cli.run() started")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     if len(sys.argv) < 2:
         print("Usage: app-ox2 <repo-path>")

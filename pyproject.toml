@@ -8,9 +8,8 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "agent-framework>=1.15.0",
+    "semantic-kernel>=1.15.0",
     "google-genai>=2.19.0",
-    "google-generativeai>=0.8.6",
     "pyyaml>=6.0.3",
     "requests>=2.34.2",
 ]

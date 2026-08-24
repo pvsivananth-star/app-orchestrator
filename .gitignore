@@ -39,3 +39,4 @@ htmlcov/
 
 # uv
 uv.lock
+.DS_Store
