@@ -21,9 +21,11 @@ class PipelineStage(Enum):
     DONE = "done"
     FAILED = "failed"
 
+    def __str__(self):
+        return self.value
+
 @dataclass
 class PipelineState:
-    """Current state of the pipeline."""
     stage: PipelineStage = PipelineStage.INIT
     loop_a_iteration: int = 0
     loop_b_iteration: int = 0
@@ -60,5 +62,4 @@ class PipelineState:
         }
     
     def save(self, path: Path):
-        """Save state to a JSON file (for crash recovery)."""
         path.write_text(json.dumps(self.to_dict(), indent=2))

@@ -58,9 +58,7 @@ class BaseProvider(ABC):
         self.max_retries = config.get("max_retries", 5)
         self.retry_delay = config.get("retry_delay", 1.0)
         
-        # Fallback models list (order of preference)
         self.fallback_models = config.get("fallback_models", [])
-        # Rate limiting interval (seconds between requests)
         self.rate_limit_interval = config.get("rate_limit_interval", 0.0)
         
         self._last_request_time = 0.0
@@ -71,12 +69,18 @@ class BaseProvider(ABC):
         pass
     
     @abstractmethod
-    def _call_model(self, prompt: str, context: Dict[str, Any], model: str) -> ProviderResponse:
-        """Generate using a specific model. Must be implemented by subclass."""
+    def _generate(self, prompt: str, context: Dict[str, Any]) -> ProviderResponse:
+        """Generate using the provider's default model. Must be implemented by subclass."""
         pass
     
+    def _call_model(self, prompt: str, context: Dict[str, Any], model: str) -> ProviderResponse:
+        """
+        Generate using a specific model. Default implementation ignores model and calls _generate.
+        Subclasses can override to support multiple models.
+        """
+        return self._generate(prompt, context)
+    
     def _rate_limit(self):
-        """Ensure at least rate_limit_interval seconds between requests."""
         if self.rate_limit_interval <= 0:
             return
         now = time.time()
@@ -131,13 +135,11 @@ class BaseProvider(ABC):
             logger.warning(f"Cache write failed: {e}")
     
     def generate(self, prompt: str, context: Dict[str, Any]) -> ProviderResponse:
-        # Check cache
         cache_key = self._get_cache_key(prompt, context)
         cached = self._read_cache(cache_key)
         if cached:
             return cached
         
-        # Determine which models to try
         models_to_try = self.fallback_models if self.fallback_models else [self.config.get("model")]
         if not models_to_try or not models_to_try[0]:
             models_to_try = [self.config.get("model", "default")]
@@ -155,20 +157,16 @@ class BaseProvider(ABC):
             except ProviderError as e:
                 last_error = e
                 if not e.retryable:
-                    # Non-retryable error – stop trying other models
                     break
-                # Log and try next model
                 logger.warning(f"Model {model} failed: {e}. Trying next model.")
                 continue
             except Exception as e:
-                # Unexpected – raise as unknown and stop
                 raise ProviderError(
                     error_type=ProviderErrorType.UNKNOWN,
                     message=f"Unexpected error on {model}: {str(e)}",
                     provider=self.provider_name,
                     retryable=False
                 )
-        # All models exhausted
         if last_error:
             raise last_error
         raise ProviderError(

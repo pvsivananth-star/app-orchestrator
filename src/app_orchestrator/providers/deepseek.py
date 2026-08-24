@@ -51,3 +51,7 @@ class DeepSeekProvider(BaseProvider):
         except Exception as e:
             raise ProviderError(ProviderErrorType.UNKNOWN, str(e), self.provider_name, True)
 
+
+    def _call_model(self, prompt: str, context: Dict[str, Any], model: str) -> ProviderResponse:
+        """Delegate to _generate (ignores model)."""
+        return self._generate(prompt, context)

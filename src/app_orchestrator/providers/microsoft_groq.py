@@ -1,4 +1,3 @@
-
 import os
 from typing import Dict, Any
 import asyncio
@@ -30,36 +29,60 @@ class MicrosoftGroqProvider(BaseProvider):
             from semantic_kernel import Kernel
             from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
             self._kernel = Kernel()
-            service = OpenAIChatCompletion(
-                service_id="groq",
-                ai_model_id=self.model_name,
-                api_key=self.api_key,
-                endpoint="https://api.groq.com/openai/v1"
-            )
+            try:
+                service = OpenAIChatCompletion(
+                    service_id="groq",
+                    ai_model_id=self.model_name,
+                    api_key=self.api_key,
+                    base_url="https://api.groq.com/openai/v1"
+                )
+            except TypeError:
+                service = OpenAIChatCompletion(
+                    service_id="groq",
+                    ai_model_id=self.model_name,
+                    api_key=self.api_key,
+                    endpoint="https://api.groq.com/openai/v1"
+                )
             self._kernel.add_service(service)
         except Exception as e:
-            raise ProviderError(ProviderErrorType.UNKNOWN, f"Kernel init failed: {e}", self.provider_name, False)
+            raise ProviderError(
+                error_type=ProviderErrorType.UNKNOWN,
+                message=f"Kernel init failed: {e}",
+                provider=self.provider_name,
+                retryable=False
+            )
     
-    def _generate(self, prompt: str, context: Dict[str, Any]) -> ProviderResponse:
+    def _call_model(self, prompt: str, context: Dict[str, Any], model: str) -> ProviderResponse:
+        actual_model = model if model else self.model_name
         try:
             from semantic_kernel.contents import ChatHistory
             chat = ChatHistory()
             if "system_instruction" in context:
                 chat.add_system_message(context["system_instruction"])
             chat.add_user_message(prompt)
-            response = asyncio.run(self._generate_async(chat, context))
-            return ProviderResponse(content=response, provider=self.provider_name, model=self.model_name)
+            response = asyncio.run(self._generate_async(chat, context, actual_model))
+            return ProviderResponse(
+                content=response,
+                provider=self.provider_name,
+                model=actual_model
+            )
         except Exception as e:
             if "rate" in str(e).lower():
                 raise ProviderError(ProviderErrorType.RATE_LIMIT, f"Rate limit: {e}", self.provider_name, True)
             raise ProviderError(ProviderErrorType.UNKNOWN, str(e), self.provider_name, True)
     
-    async def _generate_async(self, chat, context):
+    async def _generate_async(self, chat, context, model):
         from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
         settings = OpenAIChatPromptExecutionSettings()
         settings.temperature = context.get("temperature", 0.7)
         settings.max_tokens = context.get("max_tokens", 8192)
         settings.top_p = context.get("top_p", 0.95)
-        response = await self._kernel.get_service("groq").get_chat_message_content(chat_history=chat, settings=settings)
+        response = await self._kernel.get_service("groq").get_chat_message_content(
+            chat_history=chat,
+            settings=settings
+        )
         return str(response)
 
+    def _generate(self, prompt: str, context: Dict[str, Any]) -> ProviderResponse:
+        """Implement the abstract _generate method by calling _call_model with default model."""
+        return self._call_model(prompt, context, self.model_name)
