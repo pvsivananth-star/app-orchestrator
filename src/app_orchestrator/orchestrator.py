@@ -1,12 +1,13 @@
 """Orchestrator – runs the agent pipeline."""
 
 import logging
-import json
 from pathlib import Path
 from .workspace import Workspace
 from .state import PipelineState, PipelineStage
 from .providers import ProviderRegistry
 from .agents.interaction import InteractionAgent
+from .agents.requirement_enhancer import RequirementEnhancerAgent
+from .agents.implementation import ImplementationAgent
 
 logger = logging.getLogger(__name__)
 
@@ -17,36 +18,35 @@ class Orchestrator:
         self.state = PipelineState()
         self.provider_registry = ProviderRegistry()
         self.provider_registry.load_config()
-    
+
     def run(self, requirements: str) -> dict:
-        """Run the orchestrator."""
         try:
-            # Write initial requirements
             self.workspace.write("user_requirements.md", requirements)
-            
-            # Run interaction agent
+
             logger.info("Starting InteractionAgent")
-            interaction = InteractionAgent(
-                self.workspace,
-                self.state,
-                self.provider_registry
-            )
-            result = interaction.run()
-            
-            # Write state as JSON (using to_dict())
+            interaction = InteractionAgent(self.workspace, self.state, self.provider_registry)
+            interaction.run()
+
+            logger.info("Starting RequirementEnhancerAgent")
+            enhancer = RequirementEnhancerAgent(self.workspace, self.state, self.provider_registry)
+            enhancer.run()
+
+            logger.info("Starting ImplementationAgent")
+            impl = ImplementationAgent(self.workspace, self.state, self.provider_registry)
+            impl.run()
+
             self.workspace.write_json("state.json", self.state.to_dict())
-            
             self.state.stage = PipelineStage.DONE
+
             return {
                 "status": "success",
-                "message": f"Interaction completed: {result.get('clarified_requirements', 'No clarification')[:200]}",
+                "message": "Requirements clarification, enhancement, and implementation completed",
                 "state": self.state.to_dict()
             }
         except Exception as e:
             self.state.stage = PipelineStage.FAILED
             self.state.add_error(str(e))
             logger.error(f"Pipeline failed: {e}")
-            # Write error state (using to_dict())
             self.workspace.write_json("state.json", self.state.to_dict())
             return {
                 "status": "failed",

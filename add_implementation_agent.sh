@@ -1,3 +1,4 @@
+cat > src/app_orchestrator/agents/implementation.py << 'EOF'
 """Implementation Agent – generates code based on requirements (language-agnostic)."""
 
 from typing import Dict, Any, List
@@ -143,3 +144,10 @@ Start with the main application file, then add supporting files.
             "status": "implemented",
             "file_count": len(files_written)
         }
+EOF
+
+# Clean cache
+find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+find . -type f -name "*.pyc" -delete 2>/dev/null || true
+
+echo "✅ Implementation Agent fixed with clean file parsing"
