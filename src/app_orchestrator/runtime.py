@@ -1,14 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Dict
 
 
 class AgentRuntime(ABC):
-    """
-    Application-level runtime abstraction.
-
-    The application depends on this interface rather than directly
-    depending on a specific model provider.
-    """
+    """Provider-independent asynchronous agent execution contract."""
 
     @abstractmethod
     async def run(
@@ -19,9 +14,26 @@ class AgentRuntime(ABC):
         """Execute an agent request."""
         raise NotImplementedError
 
+    async def text(
+            self,
+            prompt: str,
+            **kwargs: Any,
+    ) -> str:
+        """Execute an agent request and return response text."""
+        result = await self.run(prompt, **kwargs)
+
+        text = getattr(result, "text", None)
+
+        if not text:
+            raise RuntimeError(
+                "Agent runtime returned an empty response."
+            )
+
+        return text
+
 
 class GeminiAgentRuntime(AgentRuntime):
-    """Agent Framework runtime backed by Gemini."""
+    """Agent Framework runtime backed by Google Gemini."""
 
     def __init__(
             self,
@@ -34,6 +46,10 @@ class GeminiAgentRuntime(AgentRuntime):
             model=model,
             instructions=instructions,
         )
+
+    @property
+    def model(self) -> str:
+        return self._runtime.model
 
     async def run(
             self,

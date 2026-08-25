@@ -5,7 +5,12 @@ from .config import get_gemini_api_key, get_gemini_model
 
 
 class AgentFrameworkGeminiRuntime:
-    """Gemini-backed Agent Framework runtime."""
+    """
+    Agent Framework runtime backed by Google Gemini.
+
+    Agent Framework execution is asynchronous, so this runtime remains
+    separate from the existing synchronous BaseProvider contract.
+    """
 
     def __init__(
             self,
@@ -26,9 +31,14 @@ class AgentFrameworkGeminiRuntime:
         )
 
     async def run(self, prompt: str):
+        """Execute the Agent Framework agent."""
+        if not prompt.strip():
+            raise ValueError("Agent prompt cannot be empty.")
+
         return await self.agent.run(prompt)
 
     async def text(self, prompt: str) -> str:
+        """Execute the agent and return response text."""
         result = await self.run(prompt)
 
         if not result.text:
