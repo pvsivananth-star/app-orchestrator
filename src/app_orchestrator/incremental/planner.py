@@ -25,6 +25,10 @@ class IncrementalPlanner:
                     "Create the CLI entry point src/main.py that parses arguments and calls the calculator functions.",
                     "Create unit tests tests/test_calculator.py with test cases for all operations.",
                 ],
+                "java": [
+                    "Create the main Swing UI class src/CalculatorApp.java with JFrame, JTextField display, and button layout.",
+                    "Create the calculator logic class src/CalculatorLogic.java with add, subtract, multiply, divide operations.",
+                ],
                 "javascript": [
                     "Create the main application file src/index.js with core logic.",
                     "Create the CLI entry point src/cli.js that parses arguments.",
@@ -34,11 +38,6 @@ class IncrementalPlanner:
                     "Create the main application file src/index.ts with core logic.",
                     "Create the CLI entry point src/cli.ts that parses arguments.",
                     "Create unit tests tests/test.ts with test cases for all operations.",
-                ],
-                "java": [
-                    "Create the main application class src/Main.java with core logic.",
-                    "Create the CLI entry point with argument parsing.",
-                    "Create unit tests src/test/ with test cases.",
                 ],
                 "csharp": [
                     "Create the main application class src/Program.cs with core logic.",
