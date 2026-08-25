@@ -1,31 +1,23 @@
-import asyncio
-import unittest
+import pytest
 
-from agent_framework import Agent
-from agent_framework.gemini import GeminiChatClient
+from app_orchestrator.providers.gemini import GeminiProvider
 
 
-MODEL = "gemini-3.5-flash"
-
-
-async def run_test() -> str:
-    agent = Agent(
-        client=GeminiChatClient(model=MODEL),
-        instructions="Answer briefly.",
+@pytest.mark.anyio
+async def test_gemini_provider_agent_framework():
+    provider = GeminiProvider(
+        {
+            "name": "gemini",
+            "model": "gemini-3.5-flash",
+        }
     )
 
-    result = await agent.run(
-        "Reply with exactly: AGENT FRAMEWORK GEMINI OK"
+    response = await provider.generate_with_agent_framework(
+        prompt="Reply with exactly: PROVIDER AGENT FRAMEWORK OK",
+        context={},
     )
 
-    return str(result)
-
-
-class TestAgentFrameworkGemini(unittest.TestCase):
-    def test_gemini_agent(self):
-        result = asyncio.run(run_test())
-        self.assertIn("AGENT FRAMEWORK GEMINI OK", result)
-
-
-if __name__ == "__main__":
-    unittest.main()
+    assert response.content
+    assert "PROVIDER AGENT FRAMEWORK OK" in response.content
+    assert response.provider == "gemini"
+    assert response.model == "gemini-3.5-flash"

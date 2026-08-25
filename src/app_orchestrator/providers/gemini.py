@@ -1,6 +1,6 @@
 import os
 from typing import Dict, Any
-
+from ..agent_framework import AgentFrameworkGeminiRuntime
 from google import genai
 from google.genai import types
 
@@ -336,3 +336,43 @@ class GeminiProvider(BaseProvider):
                 provider=self.provider_name,
                 retryable=True,
             )
+
+
+    async def generate_with_agent_framework(
+            self,
+            prompt: str,
+            context: Dict[str, Any] | None = None,
+    ) -> ProviderResponse:
+        """
+        Generate through Microsoft Agent Framework using Gemini.
+
+        This is an opt-in path. The existing synchronous
+        BaseProvider.generate() implementation remains unchanged.
+        """
+        context = context or {}
+
+        model = context.get(
+            "model",
+            self.config.get(
+                "model",
+                self.model,
+            ),
+        )
+
+        instructions = context.get(
+            "instructions",
+            "You are a helpful assistant.",
+        )
+
+        runtime = AgentFrameworkGeminiRuntime(
+            model=model,
+            instructions=instructions,
+        )
+
+        content = await runtime.text(prompt)
+
+        return ProviderResponse(
+            content=content,
+            provider=self.provider_name,
+            model=model,
+        )

@@ -9,7 +9,7 @@ import re
 from .workspace import Workspace
 from .state import PipelineState
 from .providers import ProviderRegistry
-
+from ..agent_framework import AgentFrameworkGeminiRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -636,4 +636,21 @@ class Agent(ABC):
         self.workspace.write(
             filename,
             content,
+        )
+
+    async def run_with_agent_framework(
+            self,
+            prompt: str,
+            context: dict | None = None,
+    ):
+        """
+        Run this agent through the Agent Framework runtime.
+
+        Existing generate() behavior remains unchanged.
+        """
+        context = context or {}
+
+        return await self.provider.generate_with_agent_framework(
+            prompt=prompt,
+            context=context,
         )
