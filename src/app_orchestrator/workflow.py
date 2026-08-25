@@ -10,9 +10,9 @@ from typing_extensions import Never
 from agent_framework import Executor, WorkflowBuilder, WorkflowContext, handler
 
 from .agents.compile import CompileAgent
-from .agents.implementation import ImplementationAgent
 from .agents.interaction import InteractionAgent
 from .agents.requirement_enhancer import RequirementEnhancerAgent
+from .incremental import IncrementalCodeGenerator
 from .providers import ProviderRegistry
 from .state import PipelineStage, PipelineState
 from .workspace import Workspace
@@ -69,15 +69,36 @@ class RequirementExecutor(Executor):
         await ctx.send_message(message)
 
 
-class ImplementationExecutor(Executor):
+class IncrementalExecutor(Executor):
+    """
+    Executor that uses IncrementalCodeGenerator instead of ImplementationAgent.
+    This enables multi-chunk, iterative code generation.
+    """
+
     def __init__(self, workspace, state, provider_registry):
-        super().__init__(id="implementation")
-        self.agent = ImplementationAgent(
-            workspace,
-            state,
-            provider_registry,
-        )
+        super().__init__(id="incremental")
+        self.workspace = workspace
         self.state = state
+        self.provider_registry = provider_registry
+
+        # Get provider chain from config
+        provider_chain = self.provider_registry.get_agent_providers("implementation")
+
+        # Create the incremental generator
+        self.generator = IncrementalCodeGenerator(
+            workspace=workspace,
+            state=state,
+            provider_registry=provider_registry,
+            provider_chain=provider_chain,
+            config={
+                "target_chunk_kb": 1.0,
+                "max_context_kb": 6.0,
+                "max_iterations": 30,
+                "max_chunk_iterations": 3,
+                "verify_each_chunk": True,
+                "preserve_existing_code": True,
+            }
+        )
 
     @handler
     async def process(
@@ -86,8 +107,32 @@ class ImplementationExecutor(Executor):
             ctx: WorkflowContext[PipelineMessage],
     ) -> None:
         self.state.transition(PipelineStage.IMPLEMENTATION)
-        result = await asyncio.to_thread(self.agent.run)
-        message.results["implementation"] = result
+
+        # Read the enhanced requirements
+        requirements = self.workspace.read("requirements.md")
+        if not requirements:
+            requirements = self.workspace.read("clarified_requirements.md") or message.requirements
+
+        # Run incremental generation
+        result = await asyncio.to_thread(
+            self.generator.generate,
+            requirements=requirements,
+            repo_analysis="",  # TODO: wire repo_analysis.md
+            dependency_analysis="",  # TODO: wire dependency_analysis.md
+        )
+
+        message.results["implementation"] = {
+            "status": result.status,
+            "chunks": result.chunks_completed,
+            "files_created": result.files_created,
+            "errors": result.errors,
+        }
+
+        # Store files created in state
+        if not hasattr(self.state, "metadata"):
+            self.state.metadata = {}
+        self.state.metadata["files_written"] = result.files_created
+
         self.state.complete_stage(PipelineStage.IMPLEMENTATION)
         await ctx.send_message(message)
 
@@ -155,7 +200,7 @@ class ApplicationWorkflow:
             state,
             provider_registry,
         )
-        self.implementation = ImplementationExecutor(
+        self.incremental = IncrementalExecutor(
             workspace,
             state,
             provider_registry,
@@ -175,7 +220,7 @@ class ApplicationWorkflow:
                 [
                     self.interaction,
                     self.requirement,
-                    self.implementation,
+                    self.incremental,
                     self.compile,
                 ]
             )

@@ -9,6 +9,7 @@ from .groq import GroqProvider
 from .openrouter import OpenRouterProvider
 from .huggingface import HuggingFaceProvider
 from .microsoft_groq import MicrosoftGroqProvider
+from .ollama import OllamaProvider
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,6 @@ class ProviderRegistry:
             self._load_default_config()
     
     def load_config(self, config_path: Optional[Path] = None):
-        """Load provider configuration from YAML file."""
         if config_path is None:
             config_path = Path(__file__).parent.parent / "models" / "mapping.yaml"
         
@@ -43,25 +43,17 @@ class ProviderRegistry:
                 return
             except Exception as e:
                 logger.warning(f"Failed to load config: {e}. Using defaults.")
-        # Fallback to defaults
         self._load_default_config()
     
     def _load_default_config(self):
-        """Load default configuration if config file not found."""
         self.provider_configs = {
             "gemini": {
                 "name": "gemini",
-                "model": "gemini-3.6-flash",
+                "model": "gemini-3.5-flash",
                 "timeout": 30,
                 "max_retries": 5,
                 "retry_delay": 1.0,
-                "fallback_models": [
-                    "gemini-3.5-flash-lite",
-                    "gemini-3.1-flash-lite",
-                    "gemini-3.6-flash",
-                    "gemini-3.5-flash",
-                ],
-                "rate_limit_interval": 6.0,
+                "fallback_models": ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
                 "env_vars": ["GEMINI_API_KEY"],
             },
             "deepseek": {
@@ -74,7 +66,7 @@ class ProviderRegistry:
             },
             "groq": {
                 "name": "groq",
-                "model": "mixtral-8x7b-32768",
+                "model": "llama-3.3-70b-versatile",
                 "timeout": 30,
                 "max_retries": 5,
                 "retry_delay": 1.0,
@@ -98,26 +90,34 @@ class ProviderRegistry:
             },
             "microsoft_groq": {
                 "name": "microsoft_groq",
-                "model": "mixtral-8x7b-32768",
+                "model": "llama-3.3-70b-versatile",
                 "timeout": 30,
                 "max_retries": 5,
                 "retry_delay": 1.0,
                 "env_vars": ["GROQ_API_KEY"],
             },
+            "ollama": {
+                "name": "ollama",
+                "model": "deepseek-coder:1.3b",
+                "timeout": 120,
+                "max_retries": 3,
+                "retry_delay": 2.0,
+                "env_vars": [],
+            },
         }
         self.agent_mapping = {
-            "interaction": ["deepseek", "groq", "openrouter", "microsoft_groq", "FAIL"],
-            "requirement_enhancer": ["deepseek", "groq", "openrouter", "microsoft_groq", "FAIL"],
-            "business_analyst": ["deepseek", "groq", "openrouter", "microsoft_groq", "FAIL"],
-            "repo_analyst": ["gemini", "deepseek", "groq", "microsoft_groq", "FAIL"],
-            "dependency": ["huggingface", "deepseek", "groq", "microsoft_groq", "FAIL"],
-            "implementation": ["deepseek", "groq", "openrouter", "microsoft_groq", "FAIL"],
-            "verification": ["groq", "deepseek", "openrouter", "microsoft_groq", "FAIL"],
-            "security": ["deepseek", "groq", "openrouter", "microsoft_groq", "FAIL"],
-            "lint": ["groq", "deepseek", "openrouter", "microsoft_groq", "FAIL"],
-            "test": ["deepseek", "groq", "openrouter", "microsoft_groq", "FAIL"],
-            "doc": ["gemini", "deepseek", "groq", "microsoft_groq", "FAIL"],
-            "commit": ["openrouter", "deepseek", "groq", "microsoft_groq", "FAIL"],
+            "interaction": ["deepseek", "groq", "openrouter", "ollama", "FAIL"],
+            "requirement_enhancer": ["deepseek", "groq", "openrouter", "ollama", "FAIL"],
+            "business_analyst": ["deepseek", "groq", "openrouter", "ollama", "FAIL"],
+            "repo_analyst": ["gemini", "deepseek", "groq", "ollama", "FAIL"],
+            "dependency": ["huggingface", "deepseek", "groq", "ollama", "FAIL"],
+            "implementation": ["deepseek", "groq", "openrouter", "ollama", "FAIL"],
+            "verification": ["groq", "deepseek", "openrouter", "ollama", "FAIL"],
+            "security": ["deepseek", "groq", "openrouter", "ollama", "FAIL"],
+            "lint": ["groq", "deepseek", "openrouter", "ollama", "FAIL"],
+            "test": ["deepseek", "groq", "openrouter", "ollama", "FAIL"],
+            "doc": ["gemini", "deepseek", "groq", "ollama", "FAIL"],
+            "commit": ["openrouter", "deepseek", "groq", "ollama", "FAIL"],
         }
         logger.info("Loaded default configuration")
     
@@ -133,6 +133,7 @@ class ProviderRegistry:
             "openrouter": OpenRouterProvider,
             "huggingface": HuggingFaceProvider,
             "microsoft_groq": MicrosoftGroqProvider,
+            "ollama": OllamaProvider,
         }
         config = self.provider_configs[provider_name]
         provider = provider_map[provider_name](config)
@@ -140,7 +141,7 @@ class ProviderRegistry:
         return provider
     
     def get_agent_providers(self, agent_name: str) -> List[str]:
-        return self.agent_mapping.get(agent_name, ["deepseek", "groq", "microsoft_groq", "FAIL"])
+        return self.agent_mapping.get(agent_name, ["deepseek", "groq", "ollama", "FAIL"])
     
     def get_all_providers(self) -> List[str]:
         return list(self.provider_configs.keys())
@@ -151,6 +152,6 @@ class ProviderRegistry:
         config = self.provider_configs[provider_name]
         env_vars = config.get("env_vars", [])
         for var in env_vars:
-            if not os.getenv(var):
+            if var and not os.getenv(var):
                 return False
         return True
