@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "semantic-kernel>=1.15.0",
+    "agent-framework==1.15.0",
     "google-genai>=2.19.0",
     "pyyaml>=6.0.3",
     "requests>=2.34.2",
