@@ -1,23 +1,18 @@
 import pytest
 
-from app_orchestrator.providers.gemini import GeminiProvider
+from app_orchestrator.runtime import GeminiAgentRuntime
 
 
 @pytest.mark.anyio
-async def test_gemini_provider_agent_framework():
-    provider = GeminiProvider(
-        {
-            "name": "gemini",
-            "model": "gemini-3.5-flash",
-        }
+async def test_gemini_agent_runtime():
+    runtime = GeminiAgentRuntime(
+        model="gemini-3.5-flash",
+        instructions="Answer briefly.",
     )
 
-    response = await provider.generate_with_agent_framework(
-        prompt="Reply with exactly: PROVIDER AGENT FRAMEWORK OK",
-        context={},
+    result = await runtime.run(
+        "Reply with exactly: AGENT RUNTIME OK"
     )
 
-    assert response.content
-    assert "PROVIDER AGENT FRAMEWORK OK" in response.content
-    assert response.provider == "gemini"
-    assert response.model == "gemini-3.5-flash"
+    assert result.text
+    assert "AGENT RUNTIME OK" in result.text

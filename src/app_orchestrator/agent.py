@@ -9,7 +9,6 @@ import re
 from .workspace import Workspace
 from .state import PipelineState
 from .providers import ProviderRegistry
-from ..agent_framework import AgentFrameworkGeminiRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -654,3 +653,19 @@ class Agent(ABC):
             prompt=prompt,
             context=context,
         )
+
+    async def run_with_runtime(
+            self,
+            prompt: str,
+            runtime,
+    ):
+        """
+        Execute the agent through an AgentRuntime.
+
+        The runtime is injected so the Agent remains provider-agnostic.
+        """
+        return await runtime.run(
+            prompt,
+            agent=self,
+        )
+

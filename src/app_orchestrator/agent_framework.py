@@ -5,13 +5,7 @@ from .config import get_gemini_api_key, get_gemini_model
 
 
 class AgentFrameworkGeminiRuntime:
-    """
-    Agent Framework runtime backed by Google Gemini.
-
-    This is intentionally separate from BaseProvider because
-    Agent Framework execution is asynchronous while the existing
-    provider contract is synchronous.
-    """
+    """Gemini-backed Agent Framework runtime."""
 
     def __init__(
             self,
@@ -32,11 +26,9 @@ class AgentFrameworkGeminiRuntime:
         )
 
     async def run(self, prompt: str):
-        """Run the Agent Framework Gemini agent."""
         return await self.agent.run(prompt)
 
     async def text(self, prompt: str) -> str:
-        """Run the agent and return only response text."""
         result = await self.run(prompt)
 
         if not result.text:
