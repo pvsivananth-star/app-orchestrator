@@ -1,4 +1,4 @@
-"""Agent Framework workflow integration for the application pipeline."""
+"""Agent Framework workflow for reliable incremental execution."""
 
 from __future__ import annotations
 
@@ -14,13 +14,13 @@ from .agents.implementation import ImplementationAgent
 from .agents.interaction import InteractionAgent
 from .agents.requirement_enhancer import RequirementEnhancerAgent
 from .providers import ProviderRegistry
-from .state import PipelineState
+from .state import PipelineStage, PipelineState
 from .workspace import Workspace
 
 
 @dataclass
 class PipelineMessage:
-    """Message passed between workflow executors."""
+    """Message passed between workflow stages."""
 
     requirements: str
     results: dict[str, Any] = field(default_factory=dict)
@@ -28,20 +28,10 @@ class PipelineMessage:
 
 
 class InteractionExecutor(Executor):
-    """Execute the interaction stage."""
-
-    def __init__(
-            self,
-            workspace: Workspace,
-            state: PipelineState,
-            provider_registry: ProviderRegistry,
-    ) -> None:
+    def __init__(self, workspace, state, provider_registry):
         super().__init__(id="interaction")
-        self.agent = InteractionAgent(
-            workspace,
-            state,
-            provider_registry,
-        )
+        self.agent = InteractionAgent(workspace, state, provider_registry)
+        self.state = state
 
     @handler
     async def process(
@@ -49,26 +39,22 @@ class InteractionExecutor(Executor):
             message: PipelineMessage,
             ctx: WorkflowContext[PipelineMessage],
     ) -> None:
+        self.state.transition(PipelineStage.REQUIREMENT_CLARIFICATION)
         result = await asyncio.to_thread(self.agent.run)
         message.results["interaction"] = result
+        self.state.complete_stage(PipelineStage.REQUIREMENT_CLARIFICATION)
         await ctx.send_message(message)
 
 
 class RequirementExecutor(Executor):
-    """Execute the requirement-enhancement stage."""
-
-    def __init__(
-            self,
-            workspace: Workspace,
-            state: PipelineState,
-            provider_registry: ProviderRegistry,
-    ) -> None:
+    def __init__(self, workspace, state, provider_registry):
         super().__init__(id="requirement-enhancement")
         self.agent = RequirementEnhancerAgent(
             workspace,
             state,
             provider_registry,
         )
+        self.state = state
 
     @handler
     async def process(
@@ -76,26 +62,22 @@ class RequirementExecutor(Executor):
             message: PipelineMessage,
             ctx: WorkflowContext[PipelineMessage],
     ) -> None:
+        self.state.transition(PipelineStage.REQUIREMENT_ENHANCEMENT)
         result = await asyncio.to_thread(self.agent.run)
         message.results["requirement_enhancement"] = result
+        self.state.complete_stage(PipelineStage.REQUIREMENT_ENHANCEMENT)
         await ctx.send_message(message)
 
 
 class ImplementationExecutor(Executor):
-    """Execute incremental implementation."""
-
-    def __init__(
-            self,
-            workspace: Workspace,
-            state: PipelineState,
-            provider_registry: ProviderRegistry,
-    ) -> None:
+    def __init__(self, workspace, state, provider_registry):
         super().__init__(id="implementation")
         self.agent = ImplementationAgent(
             workspace,
             state,
             provider_registry,
         )
+        self.state = state
 
     @handler
     async def process(
@@ -103,26 +85,22 @@ class ImplementationExecutor(Executor):
             message: PipelineMessage,
             ctx: WorkflowContext[PipelineMessage],
     ) -> None:
+        self.state.transition(PipelineStage.IMPLEMENTATION)
         result = await asyncio.to_thread(self.agent.run)
         message.results["implementation"] = result
+        self.state.complete_stage(PipelineStage.IMPLEMENTATION)
         await ctx.send_message(message)
 
 
 class CompileExecutor(Executor):
-    """Execute compilation and produce workflow output."""
-
-    def __init__(
-            self,
-            workspace: Workspace,
-            state: PipelineState,
-            provider_registry: ProviderRegistry,
-    ) -> None:
+    def __init__(self, workspace, state, provider_registry):
         super().__init__(id="compile")
         self.agent = CompileAgent(
             workspace,
             state,
             provider_registry,
         )
+        self.state = state
 
     @handler
     async def process(
@@ -130,13 +108,32 @@ class CompileExecutor(Executor):
             message: PipelineMessage,
             ctx: WorkflowContext[Never, PipelineMessage],
     ) -> None:
-        result = await asyncio.to_thread(self.agent.run)
-        message.results["compile"] = result
+        self.state.transition(PipelineStage.COMPILE)
+
+        try:
+            result = await asyncio.to_thread(self.agent.run)
+            message.results["compile"] = result
+
+            if result.get("status") == "pass":
+                self.state.complete_stage(PipelineStage.COMPILE)
+                self.state.transition(PipelineStage.DONE)
+            else:
+                self.state.transition(PipelineStage.FAILED)
+
+        except Exception as exc:
+            self.state.add_error(str(exc))
+            self.state.transition(PipelineStage.FAILED)
+            message.error = str(exc)
+            message.results["compile"] = {
+                "status": "fail",
+                "error": str(exc),
+            }
+
         await ctx.yield_output(message)
 
 
 class ApplicationWorkflow:
-    """Agent Framework workflow for the application pipeline."""
+    """Reliable Agent Framework application workflow."""
 
     def __init__(
             self,
@@ -186,23 +183,58 @@ class ApplicationWorkflow:
         )
 
     async def run(self, requirements: str) -> PipelineMessage:
-        """Run the complete application workflow."""
+        """Run the workflow with bounded implementation retries."""
 
         message = PipelineMessage(requirements=requirements)
-        result = await self.workflow.run(message)
-        outputs = result.get_outputs()
 
-        if not outputs:
-            raise RuntimeError(
-                "Application workflow completed without an output."
-            )
+        for attempt in range(self.state.max_loop_a_retries + 1):
+            self.state.loop_a_iteration = attempt
 
-        output = outputs[-1]
+            if attempt:
+                self.state.transition(PipelineStage.LOOP_A)
 
-        if not isinstance(output, PipelineMessage):
-            raise RuntimeError(
-                "Application workflow returned an unexpected output type: "
-                f"{type(output).__name__}"
-            )
+            try:
+                result = await self.workflow.run(message)
+            except Exception as exc:
+                self.state.add_error(str(exc))
+                self.state.transition(PipelineStage.FAILED)
+                message.error = str(exc)
+                break
 
-        return output
+            outputs = result.get_outputs()
+
+            if not outputs:
+                self.state.add_error("Workflow produced no output.")
+                self.state.transition(PipelineStage.FAILED)
+                message.error = "Workflow produced no output."
+                break
+
+            output = outputs[-1]
+
+            if not isinstance(output, PipelineMessage):
+                self.state.add_error(
+                    f"Unexpected workflow output: {type(output).__name__}"
+                )
+                self.state.transition(PipelineStage.FAILED)
+                message.error = "Unexpected workflow output type."
+                break
+
+            message = output
+            compile_result = message.results.get("compile", {})
+
+            if compile_result.get("status") == "pass":
+                self.state.transition(PipelineStage.DONE)
+                break
+
+            if attempt >= self.state.max_loop_a_retries:
+                self.state.transition(PipelineStage.FAILED)
+                message.error = "Maximum implementation retries exceeded."
+                self.state.add_error(message.error)
+                break
+
+        self.workspace.write_json(
+            "state.json",
+            self.state.to_dict(),
+        )
+
+        return message

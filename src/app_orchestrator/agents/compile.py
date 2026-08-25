@@ -1,101 +1,122 @@
-"""Compile Agent – local compilation tool."""
+"""Local compilation and test validation agent."""
 
-from typing import Dict, Any, List
+from __future__ import annotations
+
 import logging
 import subprocess
-import tempfile
 from pathlib import Path
+from typing import Any
+
 from ..agent import Agent
 
 logger = logging.getLogger(__name__)
 
+
 class CompileAgent(Agent):
-    def _get_provider_chain(self) -> List[str]:
-        return ["FAIL"]  # No providers needed, just local execution
+    """Compile and test the generated application locally."""
 
-    def _build_prompt(self, context: Dict[str, Any]) -> str:
-        return ""  # Not used
+    def _get_provider_chain(self) -> list[str]:
+        return ["FAIL"]
 
-    def _parse_response(self, response: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        return {"status": "compiled"}  # Not used
+    def _build_prompt(self, context: dict[str, Any]) -> str:
+        return ""
 
-    def run(self) -> Dict[str, Any]:
-        """Run the compile check locally."""
-        logger.info("Running CompileAgent (local)")
+    def _parse_response(
+            self,
+            response: str,
+            context: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {"status": "compiled"}
+
+    def run(self) -> dict[str, Any]:
+        """Run syntax validation followed by the project's test suite."""
 
         repo_path = self.workspace.repo_path
-        log_content = []
+        log: list[str] = []
         success = True
 
-        # Check for Python files
-        py_files = list(repo_path.glob("*.py"))
-        if py_files:
-            log_content.append(f"Found {len(py_files)} Python file(s):")
-            for f in py_files:
-                log_content.append(f"  - {f.name}")
+        python_files = [
+            path
+            for path in repo_path.rglob("*.py")
+            if ".venv" not in path.parts
+               and ".git" not in path.parts
+               and ".ox2" not in path.parts
+               and "__pycache__" not in path.parts
+        ]
 
-            # Check syntax for each Python file
-            for f in py_files:
-                result = subprocess.run(
-                    ["python", "-m", "py_compile", str(f)],
-                    capture_output=True,
-                    text=True,
-                    cwd=repo_path
-                )
-                if result.returncode == 0:
-                    log_content.append(f"✅ {f.name}: syntax OK")
-                else:
-                    log_content.append(f"❌ {f.name}: syntax error")
-                    log_content.append(result.stderr)
-                    success = False
+        log.append(f"Found {len(python_files)} Python file(s).")
 
-        # Check for Java files
-        java_files = list(repo_path.glob("*.java"))
-        if java_files:
-            log_content.append(f"Found {len(java_files)} Java file(s):")
-            for f in java_files:
-                log_content.append(f"  - {f.name}")
+        for path in python_files:
+            result = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "py_compile",
+                    str(path),
+                ],
+                capture_output=True,
+                text=True,
+                cwd=repo_path,
+            )
 
-            # Java compilation
-            for f in java_files:
-                result = subprocess.run(
-                    ["javac", str(f)],
-                    capture_output=True,
-                    text=True,
-                    cwd=repo_path
-                )
-                if result.returncode == 0:
-                    log_content.append(f"✅ {f.name}: compiled OK")
-                else:
-                    log_content.append(f"❌ {f.name}: compilation failed")
-                    log_content.append(result.stderr)
-                    success = False
+            if result.returncode == 0:
+                log.append(f"PASS syntax: {path.relative_to(repo_path)}")
+            else:
+                success = False
+                log.append(f"FAIL syntax: {path.relative_to(repo_path)}")
+                if result.stderr:
+                    log.append(result.stderr.strip())
 
-        # Check for JavaScript/TypeScript files
-        js_files = list(repo_path.glob("*.js"))
-        ts_files = list(repo_path.glob("*.ts"))
-        if js_files or ts_files:
-            log_content.append(f"Found {len(js_files)} JS file(s) and {len(ts_files)} TS file(s)")
-            # Check if Node.js is available
-            try:
-                subprocess.run(["node", "--version"], capture_output=True, check=True)
-                log_content.append("✅ Node.js available")
-            except:
-                log_content.append("⚠️ Node.js not found (skipping JS checks)")
+        tests_dir = repo_path / "tests"
+        has_tests = tests_dir.exists() and any(tests_dir.rglob("test_*.py"))
 
-        # Check for requirements.txt and suggest installing
-        req_file = repo_path / "requirements.txt"
-        if req_file.exists():
-            log_content.append(f"Found requirements.txt")
+        test_result: dict[str, Any] = {
+            "status": "skipped",
+            "returncode": None,
+        }
 
-        log_content.append("")
-        log_content.append(f"Overall status: {'✅ PASS' if success else '❌ FAIL'}")
+        if has_tests and success:
+            result = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pytest",
+                    "-q",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=repo_path,
+            )
 
-        # Write log
-        compile_log = "\n".join(log_content)
+            test_result = {
+                "status": "pass" if result.returncode == 0 else "fail",
+                "returncode": result.returncode,
+            }
+
+            if result.stdout:
+                log.append(result.stdout.strip())
+
+            if result.stderr:
+                log.append(result.stderr.strip())
+
+            if result.returncode != 0:
+                success = False
+
+        elif has_tests:
+            test_result["status"] = "blocked_by_syntax_failure"
+            log.append("Tests skipped because syntax validation failed.")
+        else:
+            log.append("No pytest tests found; test phase skipped.")
+
+        status = "pass" if success else "fail"
+        log.append(f"Overall status: {status.upper()}")
+
+        compile_log = "\n".join(log)
         self._write_artifact("compile.log", compile_log)
 
         return {
-            "status": "pass" if success else "fail",
-            "log": compile_log
+            "status": status,
+            "syntax_status": "pass" if success or test_result["status"] != "fail" else "fail",
+            "test": test_result,
+            "log": compile_log,
         }
