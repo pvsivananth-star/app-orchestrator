@@ -690,12 +690,14 @@ DEPENDENCY ANALYSIS:
 CURRENT FILES:
 {current}
 
-Return only files that must be created or modified, using:
+Return only files that must be created or modified, using exactly this format for each file:
 
 ## FILE: relative/path.ext
 ```text
 complete file content
+```
 
+Repeat the "## FILE:" block for every file. Always close each code block with ```.
 """.strip()
 
     def _generate_response(
@@ -782,23 +784,22 @@ complete file content
         )
 
         # For incremental generation each chunk has one canonical target.
-        # If the model invents another path, normalize it to the planner's
-        # target rather than creating another directory.
-        if (
-                expected_chunk is not None
-                and len(files) == 1
-        ):
-            returned_path, content = files[0]
+        # If the model invents another path (or splits into several), always
+        # collapse to the single planned target rather than only doing so
+        # when exactly one file was returned.
+        if expected_chunk is not None and files:
+            returned_path, content = max(
+                files, key=lambda f: len(f[1])
+            )
 
-            if (
-                    returned_path
-                    != expected_chunk.file_path
-            ):
+            if returned_path != expected_chunk.file_path:
                 logger.warning(
-                    "Normalizing generated path %r -> planned path %r",
+                    "Normalizing generated path %r -> planned path %r "
+                    "(dropped %d other returned file(s))",
                     returned_path,
                     expected_chunk.file_path,
-                )
+                    len(files) - 1,
+                    )
 
             files = [
                 (
@@ -862,10 +863,10 @@ complete file content
 
                 if existing == content:
                     logger.info(
-                        "No change required: %s",
+                        "No change required (already correct): %s",
                         filepath,
                     )
-                    return False
+                    return True
 
                 logger.info(
                     "Updating existing file: %s",
