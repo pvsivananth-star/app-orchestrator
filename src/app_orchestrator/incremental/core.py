@@ -698,566 +698,566 @@ complete file content
 
 """.strip()
 
-def _generate_response(
-        self,
-        prompt: str,
-        context: Dict[str, Any],
-):
-    last_error: Optional[Exception] = None
-
-    for provider_name in self.provider_chain:
-        if (
-                not provider_name
-                or provider_name == "FAIL"
-        ):
-            continue
-
-        try:
-            logger.info(
-                "Calling implementation provider: %s",
-                provider_name,
-            )
-
-            provider = (
-                self.provider_registry.get_provider(
-                    provider_name
-                )
-            )
-
-            response = provider.generate(
-                prompt,
-                context,
-            )
-
-            logger.info(
-                "Implementation provider %s returned successfully",
-                provider_name,
-            )
-
-            return response
-
-        except Exception as exc:
-            last_error = exc
-
-            logger.warning(
-                "Implementation provider %s failed: %s",
-                provider_name,
-                exc,
-                exc_info=True,
-            )
-
-    raise RuntimeError(
-        "All implementation providers failed: "
-        f"{last_error}"
-    )
-
-def _apply_response(
-        self,
-        response,
-        expected_chunk: Optional[CodeChunk] = None,
-) -> bool:
-    text = (
-        response.content
-        if hasattr(
-            response,
-            "content",
-        )
-        else str(response)
-    )
-
-    files = self.parser.parse_files(
-        text
-    )
-
-    if not files:
-        logger.warning(
-            "Provider response contained no parseable files"
-        )
-        return False
-
-    logger.info(
-        "Provider returned %d file(s): %s",
-        len(files),
-        [filepath for filepath, _ in files],
-    )
-
-    # For incremental generation each chunk has one canonical target.
-    # If the model invents another path, normalize it to the planner's
-    # target rather than creating another directory.
-    if (
-            expected_chunk is not None
-            and len(files) == 1
+    def _generate_response(
+            self,
+            prompt: str,
+            context: Dict[str, Any],
     ):
-        returned_path, content = files[0]
+        last_error: Optional[Exception] = None
 
-        if (
-                returned_path
-                != expected_chunk.file_path
-        ):
+        for provider_name in self.provider_chain:
+            if (
+                    not provider_name
+                    or provider_name == "FAIL"
+            ):
+                continue
+
+            try:
+                logger.info(
+                    "Calling implementation provider: %s",
+                    provider_name,
+                )
+
+                provider = (
+                    self.provider_registry.get_provider(
+                        provider_name
+                    )
+                )
+
+                response = provider.generate(
+                    prompt,
+                    context,
+                )
+
+                logger.info(
+                    "Implementation provider %s returned successfully",
+                    provider_name,
+                )
+
+                return response
+
+            except Exception as exc:
+                last_error = exc
+
+                logger.warning(
+                    "Implementation provider %s failed: %s",
+                    provider_name,
+                    exc,
+                    exc_info=True,
+                )
+
+        raise RuntimeError(
+            "All implementation providers failed: "
+            f"{last_error}"
+        )
+
+    def _apply_response(
+            self,
+            response,
+            expected_chunk: Optional[CodeChunk] = None,
+    ) -> bool:
+        text = (
+            response.content
+            if hasattr(
+                response,
+                "content",
+            )
+            else str(response)
+        )
+
+        files = self.parser.parse_files(
+            text
+        )
+
+        if not files:
             logger.warning(
-                "Normalizing generated path %r -> planned path %r",
-                returned_path,
-                expected_chunk.file_path,
+                "Provider response contained no parseable files"
             )
-
-        files = [
-            (
-                expected_chunk.file_path,
-                content,
-            )
-        ]
-
-    applied = False
-
-    for filepath, content in files:
-        if not self._is_safe_relative_path(
-                filepath
-        ):
-            logger.warning(
-                "Rejected unsafe generated path: %s",
-                filepath,
-            )
-            continue
+            return False
 
         logger.info(
-            "Applying generated file: %s",
-            filepath,
+            "Provider returned %d file(s): %s",
+            len(files),
+            [filepath for filepath, _ in files],
         )
 
-        if self._write_repo_file(
-                filepath,
-                content,
+        # For incremental generation each chunk has one canonical target.
+        # If the model invents another path, normalize it to the planner's
+        # target rather than creating another directory.
+        if (
+                expected_chunk is not None
+                and len(files) == 1
         ):
-            applied = True
+            returned_path, content = files[0]
 
-    return applied
+            if (
+                    returned_path
+                    != expected_chunk.file_path
+            ):
+                logger.warning(
+                    "Normalizing generated path %r -> planned path %r",
+                    returned_path,
+                    expected_chunk.file_path,
+                )
 
-def _write_repo_file(
-        self,
-        filepath: str,
-        content: str,
-) -> bool:
-    path = self._safe_repo_path(
-        filepath
-    )
+            files = [
+                (
+                    expected_chunk.file_path,
+                    content,
+                )
+            ]
 
-    logger.info(
-        "Repository write target: %s",
-        path,
-    )
+        applied = False
 
-    path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    if (
-            path.exists()
-            and self.preserve_existing_code
-    ):
-        try:
-            existing = path.read_text(
-                encoding="utf-8"
-            )
-
-            if existing == content:
-                logger.info(
-                    "No change required: %s",
+        for filepath, content in files:
+            if not self._is_safe_relative_path(
+                    filepath
+            ):
+                logger.warning(
+                    "Rejected unsafe generated path: %s",
                     filepath,
                 )
-                return False
+                continue
 
             logger.info(
-                "Updating existing file: %s",
+                "Applying generated file: %s",
                 filepath,
+            )
+
+            if self._write_repo_file(
+                    filepath,
+                    content,
+            ):
+                applied = True
+
+        return applied
+
+    def _write_repo_file(
+            self,
+            filepath: str,
+            content: str,
+    ) -> bool:
+        path = self._safe_repo_path(
+            filepath
+        )
+
+        logger.info(
+            "Repository write target: %s",
+            path,
+        )
+
+        path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        if (
+                path.exists()
+                and self.preserve_existing_code
+        ):
+            try:
+                existing = path.read_text(
+                    encoding="utf-8"
+                )
+
+                if existing == content:
+                    logger.info(
+                        "No change required: %s",
+                        filepath,
+                    )
+                    return False
+
+                logger.info(
+                    "Updating existing file: %s",
+                    filepath,
+                )
+
+            except (
+                    OSError,
+                    UnicodeDecodeError,
+            ):
+                logger.warning(
+                    "Unable to compare existing file: %s",
+                    filepath,
+                )
+
+        path.write_text(
+            content,
+            encoding="utf-8",
+        )
+
+        logger.info(
+            "Generated/updated: %s (%d bytes)",
+            filepath,
+            len(
+                content.encode("utf-8")
+            ),
+        )
+
+        return True
+
+    def _find_relevant_files(
+            self,
+            chunk: CodeChunk,
+    ) -> List[str]:
+        repo = self.workspace.repo_path
+
+        if not repo.exists():
+            return []
+
+        target = chunk.file_path.strip(
+            "/"
+        )
+
+        target_parent = (
+            Path(target).parent.as_posix()
+        )
+
+        candidates: List[str] = []
+
+        for path in repo.rglob("*"):
+            if (
+                    not path.is_file()
+                    or self._should_ignore_path(path)
+            ):
+                continue
+
+            relative = path.relative_to(
+                repo
+            ).as_posix()
+
+            # Prefer files in the same source directory as the chunk.
+            if (
+                    target_parent != "."
+                    and relative.startswith(
+                target_parent + "/"
+            )
+            ):
+                candidates.append(
+                    relative
+                )
+
+            elif relative == target:
+                candidates.append(
+                    relative
+                )
+
+        ordered = [
+            f
+            for f in PREFERRED_FILES
+            if f in candidates
+        ]
+
+        ordered.extend(
+            f
+            for f in sorted(candidates)
+            if f not in ordered
+        )
+
+        return ordered[:20]
+
+    @staticmethod
+    def _should_ignore_path(
+            path: Path,
+    ) -> bool:
+        ignored = {
+            str(item)
+            for item in IGNORED_PATH_PATTERNS
+        }
+
+        ignored.update(
+            {
+                ".venv",
+                "venv",
+                "__pycache__",
+                ".pytest_cache",
+                "node_modules",
+                "build",
+                "dist",
+                "target",
+                ".idea",
+            }
+        )
+
+        return any(
+            part in ignored
+            for part in path.parts
+        )
+
+    def _read_repo_file(
+            self,
+            relative_path: str,
+    ) -> Optional[str]:
+        try:
+            path = self._safe_repo_path(
+                relative_path
+            )
+
+            if (
+                    not path.exists()
+                    or not path.is_file()
+            ):
+                return None
+
+            return path.read_text(
+                encoding="utf-8"
             )
 
         except (
                 OSError,
                 UnicodeDecodeError,
+                ValueError,
         ):
-            logger.warning(
-                "Unable to compare existing file: %s",
-                filepath,
+            logger.debug(
+                "Unable to read repository file: %s",
+                relative_path,
+                exc_info=True,
             )
-
-    path.write_text(
-        content,
-        encoding="utf-8",
-    )
-
-    logger.info(
-        "Generated/updated: %s (%d bytes)",
-        filepath,
-        len(
-            content.encode("utf-8")
-        ),
-    )
-
-    return True
-
-def _find_relevant_files(
-        self,
-        chunk: CodeChunk,
-) -> List[str]:
-    repo = self.workspace.repo_path
-
-    if not repo.exists():
-        return []
-
-    target = chunk.file_path.strip(
-        "/"
-    )
-
-    target_parent = (
-        Path(target).parent.as_posix()
-    )
-
-    candidates: List[str] = []
-
-    for path in repo.rglob("*"):
-        if (
-                not path.is_file()
-                or self._should_ignore_path(path)
-        ):
-            continue
-
-        relative = path.relative_to(
-            repo
-        ).as_posix()
-
-        # Prefer files in the same source directory as the chunk.
-        if (
-                target_parent != "."
-                and relative.startswith(
-            target_parent + "/"
-        )
-        ):
-            candidates.append(
-                relative
-            )
-
-        elif relative == target:
-            candidates.append(
-                relative
-            )
-
-    ordered = [
-        f
-        for f in PREFERRED_FILES
-        if f in candidates
-    ]
-
-    ordered.extend(
-        f
-        for f in sorted(candidates)
-        if f not in ordered
-    )
-
-    return ordered[:20]
-
-@staticmethod
-def _should_ignore_path(
-        path: Path,
-) -> bool:
-    ignored = {
-        str(item)
-        for item in IGNORED_PATH_PATTERNS
-    }
-
-    ignored.update(
-        {
-            ".venv",
-            "venv",
-            "__pycache__",
-            ".pytest_cache",
-            "node_modules",
-            "build",
-            "dist",
-            "target",
-            ".idea",
-        }
-    )
-
-    return any(
-        part in ignored
-        for part in path.parts
-    )
-
-def _read_repo_file(
-        self,
-        relative_path: str,
-) -> Optional[str]:
-    try:
-        path = self._safe_repo_path(
-            relative_path
-        )
-
-        if (
-                not path.exists()
-                or not path.is_file()
-        ):
             return None
 
-        return path.read_text(
-            encoding="utf-8"
+    def _verify_chunk(
+            self,
+            chunk: CodeChunk,
+    ) -> None:
+        target = self._safe_repo_path(
+            chunk.file_path
         )
 
-    except (
-            OSError,
-            UnicodeDecodeError,
-            ValueError,
-    ):
-        logger.debug(
-            "Unable to read repository file: %s",
-            relative_path,
-            exc_info=True,
-        )
-        return None
-
-def _verify_chunk(
-        self,
-        chunk: CodeChunk,
-) -> None:
-    target = self._safe_repo_path(
-        chunk.file_path
-    )
-
-    logger.info(
-        "VERIFY: checking expected generated path: %s",
-        target,
-    )
-
-    if target.is_file():
         logger.info(
-            "VERIFY SUCCESS: %s exists",
-            chunk.file_path,
+            "VERIFY: checking expected generated path: %s",
+            target,
         )
-        return
 
-    if target.is_dir():
-        files = [
-            p
-            for p in target.rglob("*")
-            if (
-                    p.is_file()
-                    and not self._should_ignore_path(
-                p
-            )
-            )
-        ]
-
-        if files:
+        if target.is_file():
             logger.info(
-                "VERIFY SUCCESS: %s contains %d file(s)",
+                "VERIFY SUCCESS: %s exists",
                 chunk.file_path,
-                len(files),
             )
             return
 
-    logger.error(
-        "VERIFY FAILED: expected generated file does not exist: %s",
-        target,
-    )
+        if target.is_dir():
+            files = [
+                p
+                for p in target.rglob("*")
+                if (
+                        p.is_file()
+                        and not self._should_ignore_path(
+                    p
+                )
+                )
+            ]
 
-    raise RuntimeError(
-        "No generated file found for chunk target: "
-        f"{chunk.file_path}"
-    )
+            if files:
+                logger.info(
+                    "VERIFY SUCCESS: %s contains %d file(s)",
+                    chunk.file_path,
+                    len(files),
+                )
+                return
 
-def _is_safe_relative_path(
-        self,
-        filepath: str,
-) -> bool:
-    if (
-            not filepath
-            or filepath.startswith(
-        ("/", "\\")
-    )
-    ):
-        return False
-
-    path = Path(filepath)
-
-    return (
-            ".." not in path.parts
-            and not path.is_absolute()
-    )
-
-def _safe_repo_path(
-        self,
-        filepath: str,
-) -> Path:
-    if not self._is_safe_relative_path(
-            filepath
-    ):
-        raise ValueError(
-            f"Unsafe repository path: {filepath}"
+        logger.error(
+            "VERIFY FAILED: expected generated file does not exist: %s",
+            target,
         )
 
-    repo = (
-        self.workspace.repo_path.resolve()
-    )
+        raise RuntimeError(
+            "No generated file found for chunk target: "
+            f"{chunk.file_path}"
+        )
 
-    target = (
-            repo / filepath
-    ).resolve()
+    def _is_safe_relative_path(
+            self,
+            filepath: str,
+    ) -> bool:
+        if (
+                not filepath
+                or filepath.startswith(
+            ("/", "\\")
+        )
+        ):
+            return False
 
-    target.relative_to(repo)
+        path = Path(filepath)
 
-    return target
+        return (
+                ".." not in path.parts
+                and not path.is_absolute()
+        )
 
-def _save_plan(self) -> None:
-    if not self.plan:
-        return
+    def _safe_repo_path(
+            self,
+            filepath: str,
+    ) -> Path:
+        if not self._is_safe_relative_path(
+                filepath
+        ):
+            raise ValueError(
+                f"Unsafe repository path: {filepath}"
+            )
 
-    payload = {
-        "language": self.plan.language,
-        "framework": self.plan.framework,
-        "requirements_summary": (
-            self.plan.requirements_summary
-        ),
-        "created_at": self.plan.created_at,
-        "metadata": self.plan.metadata,
-        "chunks": [
-            {
-                "id": c.chunk_id,
-                "file_path": c.file_path,
-                "description": c.description,
-                "order": c.order,
-                "dependencies": c.dependencies,
-                "generated": c.generated,
-                "verified": c.verified,
-                "iterations": c.iterations,
-            }
-            for c in self.plan.chunks
-        ],
-    }
+        repo = (
+            self.workspace.repo_path.resolve()
+        )
 
-    logger.info(
-        ".ox2: saving implementation plan"
-    )
+        target = (
+                repo / filepath
+        ).resolve()
 
-    self.workspace.write(
-        FILE_IMPLEMENTATION_PLAN,
-        json.dumps(
-            payload,
-            indent=2,
-        ),
-    )
+        target.relative_to(repo)
 
-def _save_result(
-        self,
-        result: GenerationResult,
-) -> None:
-    try:
+        return target
+
+    def _save_plan(self) -> None:
+        if not self.plan:
+            return
+
+        payload = {
+            "language": self.plan.language,
+            "framework": self.plan.framework,
+            "requirements_summary": (
+                self.plan.requirements_summary
+            ),
+            "created_at": self.plan.created_at,
+            "metadata": self.plan.metadata,
+            "chunks": [
+                {
+                    "id": c.chunk_id,
+                    "file_path": c.file_path,
+                    "description": c.description,
+                    "order": c.order,
+                    "dependencies": c.dependencies,
+                    "generated": c.generated,
+                    "verified": c.verified,
+                    "iterations": c.iterations,
+                }
+                for c in self.plan.chunks
+            ],
+        }
+
         logger.info(
-            ".ox2: saving incremental result: status=%s",
-            result.status,
+            ".ox2: saving implementation plan"
         )
 
         self.workspace.write(
-            FILE_INCREMENTAL_RESULT,
+            FILE_IMPLEMENTATION_PLAN,
             json.dumps(
-                {
-                    "status": result.status,
-                    "files_created": result.files_created,
-                    "files_modified": result.files_modified,
-                    "chunks_completed": result.chunks_completed,
-                    "chunks_total": result.chunks_total,
-                    "iterations": result.iterations,
-                    "errors": result.errors,
-                    "duration_seconds": result.duration_seconds,
-                },
+                payload,
                 indent=2,
             ),
         )
 
-    except Exception:
-        logger.exception(
-            "Failed to persist incremental result"
+    def _save_result(
+            self,
+            result: GenerationResult,
+    ) -> None:
+        try:
+            logger.info(
+                ".ox2: saving incremental result: status=%s",
+                result.status,
+            )
+
+            self.workspace.write(
+                FILE_INCREMENTAL_RESULT,
+                json.dumps(
+                    {
+                        "status": result.status,
+                        "files_created": result.files_created,
+                        "files_modified": result.files_modified,
+                        "chunks_completed": result.chunks_completed,
+                        "chunks_total": result.chunks_total,
+                        "iterations": result.iterations,
+                        "errors": result.errors,
+                        "duration_seconds": result.duration_seconds,
+                    },
+                    indent=2,
+                ),
+            )
+
+        except Exception:
+            logger.exception(
+                "Failed to persist incremental result"
+            )
+
+    def _update_state_metadata(
+            self,
+            values: Dict[str, Any],
+    ) -> None:
+        if not hasattr(
+                self.state,
+                "metadata",
+        ):
+            self.state.metadata = {}
+
+        self.state.metadata.update(
+            values
         )
 
-def _update_state_metadata(
-        self,
-        values: Dict[str, Any],
-) -> None:
-    if not hasattr(
-            self.state,
-            "metadata",
-    ):
-        self.state.metadata = {}
+    def _collect_plan_files(
+            self,
+    ) -> List[str]:
+        if not self.plan:
+            return []
 
-    self.state.metadata.update(
-        values
-    )
+        files = set()
 
-def _collect_plan_files(
-        self,
-) -> List[str]:
-    if not self.plan:
-        return []
+        repo = (
+            self.workspace.repo_path.resolve()
+        )
 
-    files = set()
-
-    repo = (
-        self.workspace.repo_path.resolve()
-    )
-
-    for chunk in self.plan.chunks:
-        try:
-            target = (
-                self._safe_repo_path(
-                    chunk.file_path
-                )
-            )
-
-        except ValueError:
-            continue
-
-        if target.is_file():
-            files.add(
-                target.relative_to(
-                    repo
-                ).as_posix()
-            )
-
-        elif target.is_dir():
-            for path in target.rglob("*"):
-                if (
-                        path.is_file()
-                        and not self._should_ignore_path(
-                    path
-                )
-                ):
-                    files.add(
-                        path.relative_to(
-                            repo
-                        ).as_posix()
+        for chunk in self.plan.chunks:
+            try:
+                target = (
+                    self._safe_repo_path(
+                        chunk.file_path
                     )
+                )
 
-    return sorted(files)
+            except ValueError:
+                continue
 
-@staticmethod
-def _limit_text(
-        text: str,
-        max_bytes: int,
-) -> str:
-    if not text:
-        return ""
+            if target.is_file():
+                files.add(
+                    target.relative_to(
+                        repo
+                    ).as_posix()
+                )
 
-    encoded = text.encode(
-        "utf-8"
-    )
+            elif target.is_dir():
+                for path in target.rglob("*"):
+                    if (
+                            path.is_file()
+                            and not self._should_ignore_path(
+                        path
+                    )
+                    ):
+                        files.add(
+                            path.relative_to(
+                                repo
+                            ).as_posix()
+                        )
 
-    if len(encoded) <= max_bytes:
-        return text
+        return sorted(files)
 
-    return (
-            encoded[:max_bytes]
-            .decode(
-                "utf-8",
-                errors="ignore",
-            )
-            + "\n\n[Context truncated.]"
-    )
+    @staticmethod
+    def _limit_text(
+            text: str,
+            max_bytes: int,
+    ) -> str:
+        if not text:
+            return ""
+
+        encoded = text.encode(
+            "utf-8"
+        )
+
+        if len(encoded) <= max_bytes:
+            return text
+
+        return (
+                encoded[:max_bytes]
+                .decode(
+                    "utf-8",
+                    errors="ignore",
+                )
+                + "\n\n[Context truncated.]"
+        )
