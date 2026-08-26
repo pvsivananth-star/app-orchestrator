@@ -3,8 +3,6 @@
 import re
 from typing import List, Tuple
 
-from ..constants import FILE_PATTERN, CODE_BLOCK_PATTERN
-
 
 class ResponseParser:
     """Parse code files from model responses."""
@@ -18,48 +16,54 @@ class ResponseParser:
         result = []
 
         # PATTERN 1: Standard format with FILE marker and code block
-        matches1 = re.findall(FILE_PATTERN, response, re.DOTALL)
+        pattern1 = r"##\s*FILE:\s*([^\n]+?)\s*\n```(?:[a-zA-Z]+)?\s*\n(.*?)```"
+        matches1 = re.findall(pattern1, response, re.DOTALL)
         if matches1:
             for filepath, content in matches1:
-                result.append((filepath.strip(), content.strip()))
+                filepath = filepath.strip()
+                content = content.strip()
+                if filepath and content:
+                    result.append((filepath, content))
             return result
 
-        # PATTERN 2: Code block with language specifier but no FILE marker
-        matches2 = re.findall(CODE_BLOCK_PATTERN, response, re.DOTALL)
+        # PATTERN 2: ```language ... ``` with no FILE marker
+        pattern2 = r"```(?:python|java|javascript|text|java|js|py)?\s*\n(.*?)```"
+        matches2 = re.findall(pattern2, response, re.DOTALL)
         if matches2:
             for i, content in enumerate(matches2):
                 content = content.strip()
                 if content:
-                    if i == 0:
-                        filepath = "src/main.py"
-                    elif i == 1:
-                        filepath = "src/test_main.py"
+                    if "def " in content or "class " in content or "import " in content:
+                        filename = "main.py" if i == 0 else f"module_{i+1}.py"
+                    elif "public class" in content or "import java" in content:
+                        filename = "App.java" if i == 0 else f"Module{i+1}.java"
+                    elif "function " in content or "const " in content:
+                        filename = "main.js" if i == 0 else f"module_{i+1}.js"
                     else:
-                        filepath = f"src/file_{i+1}.py"
-                    result.append((filepath, content))
+                        filename = f"file_{i+1}.txt"
+                    result.append((filename, content))
             return result
 
-        # PATTERN 3: Plain code with no markers (if it looks like Python)
-        if "def " in response or "class " in response or "import " in response:
-            lines = response.split('\n')
-            code_lines = []
-            in_code = False
-            for line in lines:
-                if line.strip().startswith('def ') or line.strip().startswith('class ') or line.strip().startswith('import '):
-                    in_code = True
-                    code_lines.append(line)
-                elif in_code and (line.startswith('    ') or line.startswith('\t') or not line.strip()):
-                    code_lines.append(line)
-                elif in_code and line.strip() and not line.startswith('    ') and not line.startswith('\t'):
-                    in_code = False
-                    if code_lines:
-                        content = '\n'.join(code_lines).strip()
-                        if content:
-                            result.append(("src/main.py", content))
-                            code_lines = []
-            if code_lines:
-                content = '\n'.join(code_lines).strip()
+        # PATTERN 3: Code blocks with no language
+        pattern3 = r"```\s*\n(.*?)```"
+        matches3 = re.findall(pattern3, response, re.DOTALL)
+        if matches3:
+            for i, content in enumerate(matches3):
+                content = content.strip()
                 if content:
-                    result.append(("src/main.py", content))
+                    filename = f"file_{i+1}.txt"
+                    result.append((filename, content))
+            return result
+
+        # PATTERN 4: Plain code with no markers
+        if "def " in response or "class " in response or "public class" in response:
+            if "public class" in response:
+                filename = "App.java"
+            elif "def " in response or "class " in response:
+                filename = "main.py"
+            else:
+                filename = "output.txt"
+            result.append((filename, response.strip()))
+            return result
 
         return result

@@ -1,574 +1,163 @@
 # ============================================================
-# app - orchestrator
+# app-orchestrator
 # AI Provider / Agent Configuration
 #
 # Strategy:
-#   Primary provider : Google Gemini
-#   Independent      : Groq
-#
-# Design:
-#   agent -> provider -> model
-#
-# API keys are read ONLY from shell environment variables.
-# Never commit API keys or .env credentials.
-# ============================================================
-
-
-# ============================================================
-# PROVIDERS
+#   Primary: Ollama (local)
+#   Fallback: Cloud providers (Groq, Gemini, DeepSeek, OpenRouter)
 # ============================================================
 
 providers:
 
   # ----------------------------------------------------------
-  # Google Gemini
-  #
-  # Primary provider for:
-  #   - repository analysis
-  #   - requirements
-  #   - implementation
-  #   - tests
-  #   - documentation
-  #
-  # Gemini 3.7 Flash = primary high-capability model
-  # Gemini 3.5 Flash = reasoning fallback
-  # Gemini 3.5 Flash-Lite = lightweight/high-volume fallback
+  # Ollama (Local)
   # ----------------------------------------------------------
 
-  gemini:
-    name: gemini
-
-    model: gemini-3.5-flash
-
-    fallback_models:
-      - gemini-3.5-flash-lite
-      - gemini-3.1-flash-lite
-
-    env_vars:
-      - GEMINI_API_KEY
-
-    timeout: 20
-
-    max_retries: 2
-
-    retry_delay: 1.0
-
+  ollama:
+    name: ollama
+    model: deepseek-coder:1.3b #codellama:7b
+    env_vars: []
+    timeout: 120
+    max_retries: 3
+    retry_delay: 2.0
 
   # ----------------------------------------------------------
-  # Groq
-  #
-  # Independent provider used primarily for:
-  #   - verification
-  #   - security
-  #   - implementation fallback
-  #   - test fallback
-  #
-  # GPT-OSS 120B = primary
-  # GPT-OSS 20B  = lightweight fallback
+  # Cloud Providers
   # ----------------------------------------------------------
 
   groq:
     name: groq
+    model: llama-3.3-70b-versatile
+    env_vars: [GROQ_API_KEY]
+    timeout: 30
+    max_retries: 5
+    retry_delay: 1.0
 
-    model: openai/gpt-oss-120b
+  gemini:
+    name: gemini
+    model: gemini-3.5-flash
+    env_vars: [GEMINI_API_KEY]
+    timeout: 30
+    max_retries: 5
+    retry_delay: 1.0
 
-    fallback_models:
-      - openai/gpt-oss-20b
+  deepseek:
+    name: deepseek
+    model: deepseek-chat
+    env_vars: [DEEPSEEK_API_KEY]
+    timeout: 30
+    max_retries: 5
+    retry_delay: 1.0
 
-    env_vars:
-      - GROQ_API_KEY
-
-    timeout: 60
-
-    max_retries: 3
-
+  openrouter:
+    name: openrouter
+    model: openai/gpt-3.5-turbo
+    env_vars: [OPENROUTER_API_KEY]
+    timeout: 30
+    max_retries: 5
     retry_delay: 1.0
 
 
 # ============================================================
 # AGENTS
 #
-# Each agent contains PROVIDERS, not model names.
-#
-# The provider layer decides which model to use.
-#
-# FAIL means:
-#   Do not silently continue if all providers fail.
-#   The workflow must report the failure.
+# Ollama first, then cloud fallback
 # ============================================================
 
 agents:
 
-
-  # ==========================================================
-  # USER INTERACTION
-  #
-  # Handles:
-  #   - user conversation
-  #   - clarification
-  #   - simple explanations
-  #
-  # Lightweight tasks can use Gemini Flash-Lite.
-  # ==========================================================
-
   interaction:
-    - gemini
-    - groq
-    - FAIL
-
-
-  # ==========================================================
-  # REQUIREMENT ENHANCER
-  #
-  # Converts a vague request into:
-  #   - functional requirements
-  #   - technical requirements
-  #   - acceptance criteria
-  #   - constraints
-  #
-  # IMPORTANT:
-  # This agent does NOT generate production code.
-  # ==========================================================
-
-  requirement_enhancer:
-    - gemini
-    - groq
-    - FAIL
-
-
-  # ==========================================================
-  # BUSINESS ANALYST
-  #
-  # Determines:
-  #   - business intent
-  #   - workflows
-  #   - actors
-  #   - business rules
-  #   - edge cases
-  # ==========================================================
-
-  business_analyst:
-    - gemini
-    - groq
-    - FAIL
-
-
-  # ==========================================================
-  # README VALIDATOR
-  #
-  # HARD GATE BEFORE CODE GENERATION
-  #
-  # Code generation MUST NOT start until README.md has been
-  # validated.
-  #
-  # Minimum recommended README size:
-  #   2 KB
-  #
-  # Preferred:
-  #   3 KB+
-  #
-  # Size alone is NOT sufficient.
-  #
-  # README should contain enough information about:
-  #   - project purpose
-  #   - requirements
-  #   - architecture
-  #   - technology stack
-  #   - setup
-  #   - usage
-  #   - acceptance criteria
-  #
-  # Output:
-  #   README Contract
-  # ==========================================================
-
-  readme_validator:
-    - gemini
-    - groq
-    - FAIL
-
-
-  # ==========================================================
-  # REPOSITORY ANALYST
-  #
-  # Reads:
-  #   - README
-  #   - repository tree
-  #   - source files
-  #   - configuration
-  #   - tests
-  #   - dependency files
-  #
-  # Produces:
-  #   Repository Understanding / Project Context
-  #
-  # This agent should NOT implement code.
-  # ==========================================================
-
-  repo_analyst:
-    - gemini
-    - groq
-    - FAIL
-
-
-  # ==========================================================
-  # DEPENDENCY ANALYST
-  #
-  # Determines:
-  #   - required dependencies
-  #   - versions
-  #   - compatibility
-  #   - conflicts
-  #   - security concerns
-  #   - unnecessary dependencies
-  #
-  # This agent should NOT blindly install dependencies.
-  # ==========================================================
-
-  dependency:
-    - gemini
-    - groq
-    - FAIL
-
-
-  # ==========================================================
-  # IMPLEMENTATION
-  #
-  # PRIMARY CODE GENERATION AGENT
-  #
-  # Preferred provider:
-  #   Gemini
-  #
-  # Preferred model:
-  #   Gemini 3.7 Flash
-  #
-  # Fallback:
-  #   Groq GPT-OSS 120B
-  #
-  # HARD REQUIREMENT:
-  #
-  # Implementation MUST NOT run until:
-  #
-  #   README validation = PASS
-  #   +
-  #   repository analysis exists
-  #   +
-  #   requirements exist
-  #   +
-  #   dependency analysis exists
-  #
-  # Implementation context should contain:
-  #
-  #   1. README
-  #   2. README Contract
-  #   3. Requirements
-  #   4. Repository Analysis
-  #   5. Dependency Analysis
-  #   6. Relevant source files
-  #   7. Constraints
-  #   8. Acceptance criteria
-  #   9. Test requirements
-  #
-  # The implementation agent should NOT receive the entire
-  # repository blindly when only a subset is relevant.
-  # ==========================================================
-
-  implementation:
     - ollama
-    - deepseek
     - groq
+    - gemini
+    - deepseek
     - openrouter
     - FAIL
 
-  # ==========================================================
-  # VERIFICATION
-  #
-  # IMPORTANT:
-  #
-  # Groq is intentionally FIRST.
-  #
-  # Typical flow:
-  #
-  #   Gemini -> implementation
-  #          ↓
-  #   Groq -> independent verification
-  #
-  # This gives provider diversity and reduces correlated
-  # model errors.
-  #
-  # Verification checks:
-  #   - correctness
-  #   - requirements
-  #   - acceptance criteria
-  #   - regressions
-  #   - edge cases
-  #   - implementation quality
-  # ==========================================================
+  requirement_enhancer:
+    - ollama
+    - groq
+    - gemini
+    - deepseek
+    - openrouter
+    - FAIL
+
+  business_analyst:
+    - ollama
+    - groq
+    - gemini
+    - deepseek
+    - openrouter
+    - FAIL
+
+  repo_analyst:
+    - ollama
+    - groq
+    - gemini
+    - deepseek
+    - openrouter
+    - FAIL
+
+  dependency:
+    - ollama
+    - groq
+    - gemini
+    - deepseek
+    - openrouter
+    - FAIL
+
+  implementation:
+    - ollama
+    - groq
+    - gemini
+    - deepseek
+    - openrouter
+    - FAIL
 
   verification:
+    - ollama
     - groq
     - gemini
+    - deepseek
+    - openrouter
     - FAIL
-
-
-  # ==========================================================
-  # SECURITY
-  #
-  # Prefer independent provider from implementation.
-  #
-  # Checks:
-  #   - secrets
-  #   - injection
-  #   - authentication
-  #   - authorization
-  #   - unsafe input handling
-  #   - command execution
-  #   - filesystem access
-  #   - dependency risks
-  #   - sensitive logging
-  #   - configuration security
-  # ==========================================================
 
   security:
+    - ollama
     - groq
     - gemini
+    - deepseek
+    - openrouter
     - FAIL
-
-
-  # ==========================================================
-  # TEST
-  #
-  # Generates / updates tests based on:
-  #   - README requirements
-  #   - acceptance criteria
-  #   - implementation
-  #   - verification findings
-  #
-  # Should not merely test whether the code runs.
-  # It should test expected behaviour.
-  # ==========================================================
-
-  test:
-    - gemini
-    - groq
-    - FAIL
-
-
-  # ==========================================================
-  # LINT
-  #
-  # Lightweight code-quality analysis.
-  #
-  # Prefer lightweight Gemini model at provider/model policy
-  # level when possible.
-  # ==========================================================
 
   lint:
-    - gemini
+    - ollama
     - groq
+    - gemini
+    - deepseek
+    - openrouter
     - FAIL
 
-
-  # ==========================================================
-  # DOCUMENTATION
-  #
-  # Handles:
-  #   - README updates
-  #   - API documentation
-  #   - usage documentation
-  #   - configuration documentation
-  #   - code documentation
-  #
-  # Prefer lightweight Gemini model for this workload.
-  # ==========================================================
+  test:
+    - ollama
+    - groq
+    - gemini
+    - deepseek
+    - openrouter
+    - FAIL
 
   doc:
-    - gemini
+    - ollama
     - groq
+    - gemini
+    - deepseek
+    - openrouter
     - FAIL
-
-
-  # ==========================================================
-  # COMMIT
-  #
-  # Generates:
-  #   - commit message
-  #   - change summary
-  #   - affected components
-  #
-  # This agent does NOT modify source code.
-  # ==========================================================
 
   commit:
-    - gemini
+    - ollama
     - groq
+    - gemini
+    - deepseek
+    - openrouter
     - FAIL
-
-
-# ============================================================
-# README / CODE GENERATION POLICY
-# ============================================================
-
-readme_requirements:
-
-  # README is mandatory before implementation.
-  required: true
-
-  # Hard minimum in bytes.
-  minimum_bytes: 2048
-
-  # Recommended size.
-  recommended_bytes: 3000
-
-  # Do not accept README based purely on byte count.
-  validate_content: true
-
-  required_sections:
-
-    - project_overview
-    - requirements
-    - architecture
-    - technology_stack
-    - setup
-    - usage
-    - acceptance_criteria
-
-
-# ============================================================
-# IMPLEMENTATION GATE
-#
-# Prevent implementation from running prematurely.
-# ============================================================
-
-implementation_requirements:
-
-  require_readme_validation: true
-
-  require_repository_analysis: true
-
-  require_requirement_analysis: true
-
-  require_dependency_analysis: true
-
-  require_acceptance_criteria: true
-
-
-# ============================================================
-# WORKFLOW ORDER
-#
-# This is the standard code-generation pipeline.
-# ============================================================
-
-workflow:
-
-  code_generation:
-
-    - interaction
-
-    - requirement_enhancer
-
-    - business_analyst
-
-    - readme_validator
-
-    - repo_analyst
-
-    - dependency
-
-    - implementation
-
-    - verification
-
-    - security
-
-    - test
-
-    - lint
-
-    - doc
-
-    - commit
-
-
-# ============================================================
-# FAILURE POLICY
-# ============================================================
-
-failure_policy:
-
-  # Never silently continue after provider exhaustion.
-  fail_fast_on_agent_failure: true
-
-  # FAIL in an agent provider list means the workflow stops.
-  allow_partial_workflow: false
-
-  # Never generate code when README gate fails.
-  block_implementation_on_readme_failure: true
-
-  # Never generate code without repository analysis.
-  block_implementation_on_repo_analysis_failure: true
-
-  # Never generate code without requirements.
-  block_implementation_on_requirement_failure: true
-
-  # Never generate code without dependency analysis.
-  block_implementation_on_dependency_failure: true
-
-
-# ============================================================
-# RETRY POLICY
-# ============================================================
-
-retry_policy:
-
-  max_retries: 3
-
-  initial_delay_seconds: 1.0
-
-  exponential_backoff: true
-
-  max_delay_seconds: 10
-
-  # Provider Retry-After / rate-limit information should take
-  # precedence over this default delay when available.
-  respect_retry_after: true
-
-
-# ============================================================
-# SECURITY
-# ============================================================
-
-security:
-
-  # API keys must never be stored in this configuration.
-  api_keys_from_environment_only: true
-
-  allow_env_files: false
-
-  prevent_secret_logging: true
-
-  prevent_api_key_in_prompts: true
-
-  prevent_api_key_in_agent_output: true
-
-
-# ============================================================
-# DEFAULTS
-# ============================================================
-
-defaults:
-
-  timeout_seconds: 60
-
-  max_output_tokens: 65536
-
-  temperature: 0.2
-
-  # Code generation should favour deterministic output.
-  code_generation_temperature: 0.1
-
-  # Analysis can tolerate slightly more variation.
-  analysis_temperature: 0.2
-
-  # Documentation can be somewhat more flexible.
-  documentation_temperature: 0.3

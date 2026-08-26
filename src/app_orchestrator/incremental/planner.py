@@ -11,63 +11,48 @@ class IncrementalPlanner:
     """Creates implementation plans from requirements."""
 
     def __init__(
-        self,
-        target_chunk_kb: float = 1.0,
-        plans: Dict[str, List[str]] = None,
+            self,
+            target_chunk_kb: float = 1.0,
+            plans: Dict[str, List[str]] = None,
     ):
         self.target_chunk_kb = target_chunk_kb
 
-        # Default plans if none provided
+        # Generic plans – not tied to any specific project
         if plans is None:
             plans = {
-                "python": [
-                    "Create the main calculator file src/calculator.py with add, subtract, multiply, divide functions and error handling.",
-                    "Create the CLI entry point src/main.py that parses arguments and calls the calculator functions.",
-                    "Create unit tests tests/test_calculator.py with test cases for all operations.",
-                ],
                 "java": [
-                    "Create the main Swing UI class src/CalculatorApp.java with JFrame, JTextField display, and button layout.",
-                    "Create the calculator logic class src/CalculatorLogic.java with add, subtract, multiply, divide operations.",
+                    "Create the main application class with the GUI layout and entry point.",
+                    "Create the logic class for business operations.",
+                ],
+                "python": [
+                    "Create the main application logic.",
+                    "Create the CLI entry point.",
+                    "Create unit tests.",
                 ],
                 "javascript": [
-                    "Create the main application file src/index.js with core logic.",
-                    "Create the CLI entry point src/cli.js that parses arguments.",
-                    "Create unit tests tests/test.js with test cases for all operations.",
+                    "Create core application logic.",
+                    "Create DOM/UI components.",
+                    "Create event handlers.",
                 ],
                 "typescript": [
-                    "Create the main application file src/index.ts with core logic.",
-                    "Create the CLI entry point src/cli.ts that parses arguments.",
-                    "Create unit tests tests/test.ts with test cases for all operations.",
-                ],
-                "csharp": [
-                    "Create the main application class src/Program.cs with core logic.",
-                    "Create the CLI entry point with argument parsing.",
-                    "Create unit tests tests/ with test cases.",
-                ],
-                "go": [
-                    "Create the main application file src/main.go with core logic.",
-                    "Create the CLI entry point with argument parsing.",
-                    "Create unit tests src/main_test.go with test cases.",
-                ],
-                "rust": [
-                    "Create the main application file src/main.rs with core logic.",
-                    "Create the CLI entry point with argument parsing.",
-                    "Create unit tests tests/ with test cases.",
+                    "Create core application logic.",
+                    "Create DOM/UI components.",
+                    "Create event handlers.",
                 ],
                 "default": [
-                    "Create the main application file with core logic.",
-                    "Create the CLI entry point with argument parsing.",
-                    "Create unit tests with test cases.",
+                    "Create core application logic.",
+                    "Create user interface.",
+                    "Create tests.",
                 ],
             }
 
         self.plans = plans
 
     def create_plan(
-        self,
-        requirements: str,
-        repo_analysis: str = "",
-        dependency_analysis: str = "",
+            self,
+            requirements: str,
+            repo_analysis: str = "",
+            dependency_analysis: str = "",
     ) -> Tuple[str, str, List[CodeChunk]]:
         """Create a generation plan."""
         language, framework = self.detect_language_and_framework(requirements)
@@ -75,14 +60,14 @@ class IncrementalPlanner:
         return language, framework, chunks
 
     def build_plan(
-        self,
-        requirements: str,
-        language: str,
-        framework: str,
+            self,
+            requirements: str,
+            language: str,
+            framework: str,
     ) -> List[CodeChunk]:
         """Build plan from requirements and language."""
 
-        # Extract explicit file paths from requirements
+        # Try to extract explicit file paths from requirements
         explicit_files = self._extract_file_paths(requirements)
 
         if explicit_files:
@@ -99,22 +84,95 @@ class IncrementalPlanner:
                 )
             return chunks
 
-        # Use language-specific plan
+        # Otherwise, use language-specific generic plan
         plan = self.plans.get(language, self.plans.get("default", []))
 
-        return [
-            CodeChunk(
-                chunk_id=f"{language}-{index}",
-                file_path="src",
-                description=description,
-                order=index,
-                target_kb=self.target_chunk_kb,
+        # Determine project name and path prefix
+        project_name = self._detect_project_name(requirements)
+        path_prefix = self._detect_path_prefix(requirements)
+
+        chunks = []
+        for index, description in enumerate(plan, start=1):
+            # Generate a sensible filename based on description and language
+            filename = self._generate_filename(description, language, project_name, index)
+            # Prepend path prefix if detected
+            if path_prefix:
+                filename = f"{path_prefix}/{filename}"
+            chunks.append(
+                CodeChunk(
+                    chunk_id=f"{language}-{index}",
+                    file_path=filename,
+                    description=description,
+                    order=index,
+                    target_kb=self.target_chunk_kb,
+                )
             )
-            for index, description in enumerate(plan, start=1)
+        return chunks
+
+    @staticmethod
+    def _detect_project_name(requirements: str) -> str:
+        """Extract project name from requirements."""
+        patterns = [
+            r'project\s+name\s+["\']?([A-Za-z][A-Za-z0-9_\s\-]*)',
+            r'application\s+name\s+["\']?([A-Za-z][A-Za-z0-9_\s\-]*)',
+            r'^#\s*([A-Za-z][A-Za-z0-9_\s\-]*)',  # Markdown title
+            r'Build\s+([A-Za-z][A-Za-z0-9_\s\-]*)',  # "Build a calculator" -> calculator
+            r'Create\s+([A-Za-z][A-Za-z0-9_\s\-]*)',  # "Create a web API" -> web
         ]
+        for pattern in patterns:
+            match = re.search(pattern, requirements, re.IGNORECASE)
+            if match:
+                name = match.group(1).strip().replace(' ', '').replace('-', '')
+                # Ensure it starts with uppercase for Java/C# etc.
+                if name and name[0].islower():
+                    name = name[0].upper() + name[1:]
+                return name
+        return "App"
+
+    @staticmethod
+    def _detect_path_prefix(requirements: str) -> str:
+        """Detect if the project uses a standard source folder structure."""
+        if re.search(r'\bsrc\b', requirements, re.IGNORECASE):
+            return "src"
+        elif re.search(r'\blib\b', requirements, re.IGNORECASE):
+            return "lib"
+        elif re.search(r'\bapp\b', requirements, re.IGNORECASE):
+            return "app"
+        return ""  # root
+
+    @staticmethod
+    def _generate_filename(description: str, language: str, project_name: str, index: int) -> str:
+        """Generate a suitable filename from the chunk description and language."""
+        # For Java, we'll base filename on project name for main class
+        if language == "java":
+            if index == 1:
+                return f"{project_name}.java"
+            else:
+                return f"{project_name}Logic.java"
+        # For Python, use lower-case underscores
+        elif language == "python":
+            if index == 1:
+                return "main.py"
+            elif "test" in description.lower():
+                return "test_main.py"
+            else:
+                return f"module_{index}.py"
+        # For JavaScript/TypeScript
+        elif language in ("javascript", "typescript"):
+            ext = "js" if language == "javascript" else "ts"
+            if index == 1:
+                return f"main.{ext}"
+            elif "test" in description.lower():
+                return f"main.test.{ext}"
+            else:
+                return f"module_{index}.{ext}"
+        else:
+            # Generic: use the language name and index
+            return f"{language}_{index}.txt"
 
     @staticmethod
     def _extract_file_paths(requirements: str) -> List[str]:
+        """Extract explicit file paths from requirements."""
         pattern = (
             r"(?:^|[\s`(])"
             r"((?:src/|app/|lib/|tests?/|config/|docs/)?"

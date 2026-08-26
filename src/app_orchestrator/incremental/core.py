@@ -43,7 +43,7 @@ class IncrementalCodeGenerator:
         self.config = config or {}
 
         self.provider_chain = (
-            provider_chain or self.provider_registry.get_agent_providers("implementation")
+                provider_chain or self.provider_registry.get_agent_providers("implementation")
         )
 
         self.target_chunk_kb = self._get_float("target_chunk_kb", DEFAULT_TARGET_CHUNK_KB)
@@ -214,8 +214,8 @@ class IncrementalCodeGenerator:
             "language": self.plan.language if self.plan else "",
             "framework": self.plan.framework if self.plan else "",
             "requirements": self._limit_text(requirements, int(self.max_context_kb * 1024)),
-            "repo_analysis": self._limit_text(repo_analysis, 1536),
-            "dependency_analysis": self._limit_text(dependency_analysis, 1536),
+            "repo_analysis": self._limit_text(repo_analysis, 1024),
+            "dependency_analysis": self._limit_text(dependency_analysis, 512),
             "current_files": {},
         }
 
@@ -262,9 +262,10 @@ OUTPUT FORMAT:
 ## FILE: relative/path.ext
 ```text
 complete file content
+```
+
 Return only files that must be created or modified.
 """.strip()
-
     def _generate_response(self, prompt, context):
         """Generate response using provider chain."""
         last_error = None
@@ -277,17 +278,15 @@ Return only files that must be created or modified.
             except Exception as exc:
                 last_error = exc
                 logger.warning("Provider %s failed: %s", provider_name, exc)
-
         raise RuntimeError(f"All providers failed. Last error: {last_error}")
 
     def _apply_response(self, response) -> bool:
-        """Parse and apply response to repository."""
         text = response.content if hasattr(response, "content") else str(response)
+        logger.debug("Applying response of length %d chars", len(text))
         files = self.parser.parse_files(text)
-
         if not files:
-            return False
-
+            logger.warning("No files parsed, using entire response as output.txt")
+            files = [("output.txt", text)]
         applied = False
         for filepath, content in files:
             if self._write_repo_file(filepath, content):
@@ -295,10 +294,8 @@ Return only files that must be created or modified.
         return applied
 
     def _write_repo_file(self, filepath: str, content: str) -> bool:
-        """Write a file to the repository."""
         path = self.workspace.repo_path / filepath
         path.parent.mkdir(parents=True, exist_ok=True)
-
         if path.exists():
             try:
                 existing = path.read_text(encoding="utf-8")
@@ -307,20 +304,16 @@ Return only files that must be created or modified.
                     return False
             except (OSError, UnicodeDecodeError):
                 pass
-
         path.write_text(content, encoding="utf-8")
         logger.info("Generated: %s", filepath)
         return True
 
     def _find_relevant_files(self, chunk):
-        """Find relevant files in the repository for context."""
         repo = self.workspace.repo_path
         if not repo.exists():
             return []
-
         target = chunk.file_path.strip("/")
         candidates = []
-
         for path in repo.rglob("*"):
             if not path.is_file():
                 continue
@@ -331,19 +324,15 @@ Return only files that must be created or modified.
                 candidates.append(relative)
             elif not target:
                 candidates.append(relative)
-
         ordered = [f for f in PREFERRED_FILES if f in candidates]
         ordered.extend(sorted([f for f in candidates if f not in ordered]))
-
         return ordered[:20]
 
     @staticmethod
     def _should_ignore_path(path: Path) -> bool:
-        """Check if a path should be ignored."""
         return bool(set(path.parts) & IGNORED_PATH_PATTERNS)
 
     def _read_repo_file(self, relative_path: str):
-        """Read a file from the repository."""
         repo = self.workspace.repo_path.resolve()
         path = (repo / relative_path).resolve()
         try:
@@ -358,20 +347,22 @@ Return only files that must be created or modified.
             return None
 
     def _verify_chunk(self, chunk):
-        """Verify a chunk was generated correctly."""
         target = self.workspace.repo_path / chunk.file_path
-        if target.is_file() and not target.exists():
-            raise RuntimeError(f"Missing file: {target}")
-        if target.is_dir():
+        if "." in chunk.file_path:
+            if not target.exists():
+                raise RuntimeError(f"Missing file: {target}")
+            return
+        if target.exists() and target.is_dir():
             files = [
                 p for p in target.rglob("*")
                 if p.is_file() and not self._should_ignore_path(p)
             ]
             if not files:
-                logger.warning("No files under %s", chunk.file_path)
+                logger.warning("No files generated under %s", chunk.file_path)
+            return
+        logger.warning("Directory %s does not exist", chunk.file_path)
 
     def _save_plan(self):
-        """Persist the implementation plan."""
         if self.plan is None:
             return
         payload = {
@@ -380,39 +371,45 @@ Return only files that must be created or modified.
             "requirements_summary": self.plan.requirements_summary,
             "created_at": self.plan.created_at,
             "metadata": self.plan.metadata,
-            "chunks": [{
-                "id": c.chunk_id,
-                "file_path": c.file_path,
-                "description": c.description,
-                "order": c.order,
-                "dependencies": c.dependencies,
-                "generated": c.generated,
-                "verified": c.verified,
-                "iterations": c.iterations,
-            } for c in self.plan.chunks],
+            "chunks": [
+                {
+                    "id": c.chunk_id,
+                    "file_path": c.file_path,
+                    "description": c.description,
+                    "order": c.order,
+                    "dependencies": c.dependencies,
+                    "generated": c.generated,
+                    "verified": c.verified,
+                    "iterations": c.iterations,
+                }
+                for c in self.plan.chunks
+            ],
         }
         self.workspace.write(FILE_IMPLEMENTATION_PLAN, json.dumps(payload, indent=2))
 
     def _save_result(self, result):
-        """Persist the generation result."""
-        self.workspace.write(FILE_INCREMENTAL_RESULT, json.dumps({
-            "status": result.status,
-            "files_created": result.files_created,
-            "chunks_completed": result.chunks_completed,
-            "chunks_total": result.chunks_total,
-            "iterations": result.iterations,
-            "errors": result.errors,
-            "duration_seconds": result.duration_seconds,
-        }, indent=2))
+        self.workspace.write(
+            FILE_INCREMENTAL_RESULT,
+            json.dumps(
+                {
+                    "status": result.status,
+                    "files_created": result.files_created,
+                    "chunks_completed": result.chunks_completed,
+                    "chunks_total": result.chunks_total,
+                    "iterations": result.iterations,
+                    "errors": result.errors,
+                    "duration_seconds": result.duration_seconds,
+                },
+                indent=2,
+            ),
+        )
 
     def _update_state_metadata(self, values):
-        """Update state metadata."""
         if not hasattr(self.state, "metadata"):
             self.state.metadata = {}
         self.state.metadata.update(values)
 
     def _collect_plan_files(self):
-        """Collect all files from the plan."""
         if self.plan is None:
             return []
         files = set()
@@ -428,10 +425,10 @@ Return only files that must be created or modified.
 
     @staticmethod
     def _limit_text(text: str, max_bytes: int) -> str:
-        """Truncate text to max bytes."""
         if not text:
             return ""
         encoded = text.encode("utf-8")
         if len(encoded) <= max_bytes:
             return text
         return encoded[:max_bytes].decode("utf-8", errors="ignore") + "\n\n[Context truncated.]"
+
