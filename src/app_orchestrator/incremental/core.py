@@ -563,6 +563,7 @@ class IncrementalCodeGenerator:
                 "id": chunk.chunk_id,
                 "file_path": chunk.file_path,
                 "description": chunk.description,
+                "required_type_name": Path(chunk.file_path).stem,
             },
             "language": (
                 self.plan.language
@@ -680,6 +681,16 @@ CURRENT UNIT:
 ID: {context['chunk']['id']}
 TARGET: {context['chunk']['file_path']}
 DESCRIPTION: {context['chunk']['description']}
+REQUIRED PUBLIC TYPE NAME: {context['chunk']['required_type_name']}
+
+CLASS/FILE NAMING RULE (mandatory for Java/C#/similar languages):
+- The single public class/interface/enum declared in this file MUST be
+  named exactly "{context['chunk']['required_type_name']}" so it matches
+  the target file name.
+- Any other classes needed in this file must NOT be public (package-private
+  or nested), or must go in their own correctly-named file if the language
+  requires it.
+- Do not invent a different public class name.
 
 REPOSITORY ANALYSIS:
 {context['repo_analysis']}
@@ -799,7 +810,7 @@ Repeat the "## FILE:" block for every file. Always close each code block with ``
                     returned_path,
                     expected_chunk.file_path,
                     len(files) - 1,
-                    )
+                )
 
             files = [
                 (

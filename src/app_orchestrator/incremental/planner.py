@@ -12,6 +12,12 @@ from .models import CodeChunk
 class IncrementalPlanner:
     """Create practical file-level implementation chunks without LLM calls."""
 
+    _NAME_STOPWORDS = {
+        "a", "an", "the", "new", "simple", "basic", "small", "quick",
+        "application", "app", "project", "program", "tool", "system",
+        "this", "that", "using", "with", "for",
+    }
+
     def __init__(
             self,
             target_chunk_kb: float = 1.0,
@@ -389,31 +395,51 @@ class IncrementalPlanner:
 
         return any(part in ignored for part in path.parts)
 
-    @staticmethod
-    def _detect_project_name(requirements: str) -> str:
+    @classmethod
+    def _detect_project_name(cls, requirements: str) -> str:
         patterns = (
             r"\b(?:project|application|app)\s+name\s*[:=]?\s*[\"']?([A-Za-z][A-Za-z0-9_-]*)",
             r"\b(?:build|create|develop|implement)\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z0-9_-]*)",
         )
 
         for pattern in patterns:
-            match = re.search(
-                pattern,
-                requirements,
-                re.IGNORECASE,
-            )
-
-            if match:
+            for match in re.finditer(
+                    pattern,
+                    requirements,
+                    re.IGNORECASE,
+            ):
                 value = match.group(1).strip("_- ")
 
-                if value and value.lower() not in {
-                    "an",
-                    "a",
-                    "the",
-                    "application",
-                    "app",
-                }:
+                if value and value.lower() not in cls._NAME_STOPWORDS:
                     return value
+
+        # Fallback: look for a recognizable domain noun immediately
+        # before "application"/"app"/"calculator"/"program", e.g.
+        # "calculator application" -> "calculator", "todo app" -> "todo".
+        domain_match = re.search(
+            r"\b([A-Za-z][A-Za-z0-9_-]{2,})\s+"
+            r"(?:calculator|application|app|program|tool|system)\b",
+            requirements,
+            re.IGNORECASE,
+        )
+
+        if domain_match:
+            value = domain_match.group(1).strip("_- ")
+
+            if value and value.lower() not in cls._NAME_STOPWORDS:
+                return value
+
+        # Fallback: first standalone recognizable domain noun in the text
+        # (e.g. "A calculator with buttons...").
+        noun_match = re.search(
+            r"\b(calculator|todo|chat|notes?|inventory|blog|game|"
+            r"dashboard|converter|editor|player|tracker|manager)\b",
+            requirements,
+            re.IGNORECASE,
+        )
+
+        if noun_match:
+            return noun_match.group(1)
 
         return "application"
 
